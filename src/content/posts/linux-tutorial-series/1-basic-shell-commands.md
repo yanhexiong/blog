@@ -2,6 +2,7 @@
 title: 1.基础Shell指令
 published: 2026-03-21
 description: Linux 教程系列第一节，先从基础 Shell 指令入门，并配套两个 B 站视频方便边看边练。
+hideFromLists: true
 tags: ["Linux", "教程", "Shell"]
 category: 教程
 draft: false

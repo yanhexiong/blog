@@ -1,9 +1,14 @@
 # About
-This is the demo site for [Fuwari](https://github.com/saicaca/fuwari).
 
-::github{repo="saicaca/fuwari"}
+你好，我是 **Harrison Yan**。
 
-> ### Sources of images used in this site
-> - [Unsplash](https://unsplash.com/)
-> - [星と少女](https://www.pixiv.net/artworks/108916539) by [Stella](https://www.pixiv.net/users/93273965)
-> - [Rabbit - v1.4 Showcase](https://civitai.com/posts/586908) by [Rabbit_YourMajesty](https://civitai.com/user/Rabbit_YourMajesty)
+这是我的个人博客，主要记录以下内容：
+
+- Linux 学习与实践
+- 开发过程中的踩坑记录
+- AI、计算机视觉与智能体方向的笔记
+
+站点内容以公开学习记录为主，不展示邮箱、电话、精确位置等个人隐私信息。
+
+GitHub:
+[https://github.com/yanhexiong](https://github.com/yanhexiong)
