@@ -78,9 +78,9 @@ export const licenseConfig: LicenseConfig = {
 export const commentConfig: CommentConfig = {
 	enable: true,
 	repo: "yanhexiong/blog-comments",
-	repoId: "",
-	category: "",
-	categoryId: "",
+	repoId: "R_kgDORsrG5Q",
+	category: "Announcements",
+	categoryId: "DIC_kwDORsrG5c4C46ai",
 	mapping: "pathname",
 	strict: false,
 	reactionsEnabled: true,

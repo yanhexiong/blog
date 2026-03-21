@@ -2,12 +2,12 @@
 title: Linux教程系列
 published: 2026-03-21
 description: Linux 教程合集，面向实验室日常学习与实践。
-tags: ["Linux", "教程", "智辰实验室"]
+tags: ["Linux", "教程", "智泽实验室"]
 category: 教程
 draft: false
 ---
 
-这是智辰实验室的 Linux 教程合集。在开始学习前，建议先阅读下面的说明与要求。
+这是智泽实验室的 Linux 教程合集。在开始学习前，建议先阅读下面的说明与要求。
 
 ## 学习说明
 
