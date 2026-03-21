@@ -257,6 +257,9 @@ function disableAnimation() {
 */
 
 const bannerEnabled = !!document.getElementById('banner-wrapper')
+const UTTERANCES_CLIENT_SRC = 'https://utteranc.es/client.js'
+const UTTERANCES_ORIGIN = 'https://utteranc.es'
+let commentThemeObserver: MutationObserver | null = null
 
 function setClickOutsideToClose(panel: string, ignores: string[]) {
 	document.addEventListener("click", event => {
@@ -363,12 +366,90 @@ function showBanner() {
 	banner.classList.remove('opacity-0', 'scale-105');
 }
 
+function getUtterancesContainer() {
+	return document.querySelector<HTMLElement>('[data-utterances]')
+}
+
+function getUtterancesTheme(container?: HTMLElement) {
+	const target = container || getUtterancesContainer()
+	if (!target) {
+		return 'github-light'
+	}
+
+	return document.documentElement.classList.contains('dark')
+		? target.dataset.themeDark || 'github-dark'
+		: target.dataset.themeLight || 'github-light'
+}
+
+function syncUtterancesTheme() {
+	const container = getUtterancesContainer()
+	if (!container) return
+
+	const frame = container.querySelector<HTMLIFrameElement>('iframe.utterances-frame')
+	if (!frame?.contentWindow) return
+
+	frame.contentWindow.postMessage(
+		{ type: 'set-theme', theme: getUtterancesTheme(container) },
+		UTTERANCES_ORIGIN,
+	)
+}
+
+function initUtterances() {
+	const container = getUtterancesContainer()
+	if (!container) return
+
+	const repo = container.dataset.repo
+	const issueTerm = container.dataset.issueTerm
+	if (!repo || !issueTerm) return
+
+	if (container.querySelector('iframe.utterances-frame')) {
+		syncUtterancesTheme()
+		return
+	}
+
+	if (container.dataset.loaded === 'true') {
+		return
+	}
+
+	container.dataset.loaded = 'true'
+	container.replaceChildren()
+
+	const script = document.createElement('script')
+	script.src = UTTERANCES_CLIENT_SRC
+	script.async = true
+	script.crossOrigin = 'anonymous'
+	script.setAttribute('repo', repo)
+	script.setAttribute('issue-term', issueTerm)
+	script.setAttribute('theme', getUtterancesTheme(container))
+	script.setAttribute('crossorigin', 'anonymous')
+	if (container.dataset.label) {
+		script.setAttribute('label', container.dataset.label)
+	}
+
+	container.appendChild(script)
+}
+
+function initCommentThemeObserver() {
+	if (commentThemeObserver) return
+
+	commentThemeObserver = new MutationObserver(() => {
+		syncUtterancesTheme()
+	})
+
+	commentThemeObserver.observe(document.documentElement, {
+		attributes: true,
+		attributeFilter: ['class'],
+	})
+}
+
 function init() {
 	// disableAnimation()()		// TODO
 	loadTheme();
 	loadHue();
 	initCustomScrollbar();
 	showBanner();
+	initUtterances();
+	initCommentThemeObserver();
 }
 
 /* Load settings when entering the site */
@@ -432,6 +513,7 @@ const setup = () => {
 		if (heightExtend) {
 			heightExtend.classList.remove('hidden')
 		}
+		initUtterances()
 	});
 	window.swup.hooks.on('visit:end', (_visit: {to: {url: string}}) => {
 		setTimeout(() => {

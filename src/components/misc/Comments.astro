@@ -1,0 +1,26 @@
+---
+import { commentConfig } from "@/config";
+import I18nKey from "@i18n/i18nKey";
+import { i18n } from "@i18n/translation";
+
+const showComments =
+	commentConfig.enable && commentConfig.repo.trim().length > 0;
+---
+
+{showComments && (
+	<section class="mt-8 onload-animation">
+		<div class="border-[var(--line-divider)] border-dashed border-b-[1px] mb-6"></div>
+		<h2 class="mb-5 text-xl font-bold text-black/90 dark:text-white/90">
+			{i18n(I18nKey.comments)}
+		</h2>
+		<div
+			class="min-h-[12rem]"
+			data-utterances
+			data-repo={commentConfig.repo}
+			data-issue-term={commentConfig.issueTerm}
+			data-label={commentConfig.label || ""}
+			data-theme-light={commentConfig.theme.light}
+			data-theme-dark={commentConfig.theme.dark}
+		></div>
+	</section>
+)}

@@ -1,4 +1,5 @@
 import type {
+	CommentConfig,
 	ExpressiveCodeConfig,
 	LicenseConfig,
 	NavBarConfig,
@@ -81,6 +82,17 @@ export const licenseConfig: LicenseConfig = {
 	enable: true,
 	name: "CC BY-NC-SA 4.0",
 	url: "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+};
+
+export const commentConfig: CommentConfig = {
+	enable: true,
+	repo: "yanhexiong/blog-comments",
+	issueTerm: "pathname",
+	label: "comment",
+	theme: {
+		light: "github-light",
+		dark: "github-dark",
+	},
 };
 
 export const expressiveCodeConfig: ExpressiveCodeConfig = {

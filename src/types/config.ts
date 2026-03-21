@@ -77,6 +77,17 @@ export type LicenseConfig = {
 	url: string;
 };
 
+export type CommentConfig = {
+	enable: boolean;
+	repo: string;
+	issueTerm: "pathname" | "url" | "title" | "og:title";
+	label?: string;
+	theme: {
+		light: string;
+		dark: string;
+	};
+};
+
 export type LIGHT_DARK_MODE =
 	| typeof LIGHT_MODE
 	| typeof DARK_MODE
