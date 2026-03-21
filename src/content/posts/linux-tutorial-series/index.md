@@ -18,11 +18,12 @@ draft: false
 
 ## 预习视频
 
-在正式开始章节学习前，可以先看下面这段导学视频：
+在正式开始章节学习前，请先根据下面的视频把 WSL 环境准备好：
 
 <div style="position: relative; width: 100%; padding-top: 56.25%; margin: 1.5rem 0;">
   <iframe
-    src="https://player.bilibili.com/player.html?bvid=BV1tW42197za&page=1&high_quality=1&danmaku=0"
+    src="https://player.bilibili.com/player.html?bvid=BV1tW42197za&page=1&high_quality=1&danmaku=0&autoplay=0"
+    loading="lazy"
     scrolling="no"
     border="0"
     frameborder="no"

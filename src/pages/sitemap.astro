@@ -1,0 +1,62 @@
+---
+import MainGridLayout from "@layouts/MainGridLayout.astro";
+import { getSortedPostsList } from "@utils/content-utils";
+import { getPostUrlBySlug, url } from "@utils/url-utils";
+
+const siteOrigin = Astro.site ?? new URL("https://blog.727613.xyz");
+const sitemapXmlUrl = new URL("sitemap-index.xml", siteOrigin).toString();
+const allPosts = await getSortedPostsList({ includeHiddenFromLists: true });
+
+const pages = [
+	{ title: "首页", href: new URL(url("/"), siteOrigin).toString() },
+	{ title: "归档", href: new URL(url("/archive/"), siteOrigin).toString() },
+	{ title: "关于", href: new URL(url("/about/"), siteOrigin).toString() },
+	{ title: "RSS 说明页", href: new URL(url("/rss/"), siteOrigin).toString() },
+	{
+		title: "站点地图说明页",
+		href: new URL(url("/sitemap/"), siteOrigin).toString(),
+	},
+	...allPosts.map((post) => ({
+		title: post.data.title,
+		href: new URL(getPostUrlBySlug(post.slug), siteOrigin).toString(),
+	})),
+];
+---
+
+<MainGridLayout title="站点地图" description="本站站点地图与页面链接总览">
+	<div class="flex w-full rounded-[var(--radius-large)] overflow-hidden relative min-h-32">
+		<div class="card-base z-10 px-9 py-8 relative w-full">
+			<h1 class="text-3xl font-bold text-black/90 dark:text-white/90">站点地图</h1>
+			<p class="mt-4 leading-7 text-black/65 dark:text-white/65">
+				这里是站点地图。
+			</p>
+
+			<div class="mt-6 rounded-2xl border border-dashed border-[var(--line-divider)] px-5 py-4">
+				<div class="text-sm font-bold text-black/80 dark:text-white/80">XML Sitemap 地址</div>
+				<a
+					class="mt-2 block break-all text-[var(--primary)] transition hover:underline"
+					href={sitemapXmlUrl}
+					target="_blank"
+					rel="noopener noreferrer"
+				>
+					{sitemapXmlUrl}
+				</a>
+			</div>
+
+			<h2 class="mt-10 text-2xl font-bold text-black/90 dark:text-white/90">页面总览</h2>
+			<div class="mt-6 flex flex-col gap-3">
+				{pages.map((page) => (
+					<a
+						class="rounded-2xl border border-black/8 px-5 py-4 transition hover:border-[var(--primary)]/35 hover:bg-black/[0.02] dark:border-white/10 dark:hover:bg-white/[0.03]"
+						href={page.href}
+					>
+						<div class="font-bold text-black/85 dark:text-white/85">{page.title}</div>
+						<div class="mt-2 break-all text-sm leading-6 text-black/55 dark:text-white/55">
+							{page.href}
+						</div>
+					</a>
+				))}
+			</div>
+		</div>
+	</div>
+</MainGridLayout>

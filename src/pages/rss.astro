@@ -1,0 +1,59 @@
+---
+import MainGridLayout from "@layouts/MainGridLayout.astro";
+import { getSortedPostsList } from "@utils/content-utils";
+import { getPostUrlBySlug } from "@utils/url-utils";
+
+const siteOrigin = Astro.site ?? new URL("https://blog.727613.xyz");
+const feedUrl = new URL("rss.xml", siteOrigin).toString();
+const feedPosts = await getSortedPostsList();
+---
+
+<MainGridLayout title="RSS 订阅" description="本站 RSS 订阅说明与文章列表">
+	<div class="flex w-full rounded-[var(--radius-large)] overflow-hidden relative min-h-32">
+		<div class="card-base z-10 px-9 py-8 relative w-full">
+			<h1 class="text-3xl font-bold text-black/90 dark:text-white/90">RSS 订阅</h1>
+			<p class="mt-4 leading-7 text-black/65 dark:text-white/65">
+				这里是站内可浏览的 RSS 说明页。真正给订阅器使用的仍然是 XML 订阅源，
+				如果你使用 Follow、Inoreader、Feedly 等工具，请直接订阅下面这个地址。
+			</p>
+
+			<div class="mt-6 rounded-2xl border border-dashed border-[var(--line-divider)] px-5 py-4">
+				<div class="text-sm font-bold text-black/80 dark:text-white/80">RSS 订阅地址</div>
+				<a
+					class="mt-2 block break-all text-[var(--primary)] transition hover:underline"
+					href={feedUrl}
+					target="_blank"
+					rel="noopener noreferrer"
+				>
+					{feedUrl}
+				</a>
+			</div>
+
+			<h2 class="mt-10 text-2xl font-bold text-black/90 dark:text-white/90">当前收录文章</h2>
+			<p class="mt-3 leading-7 text-black/65 dark:text-white/65">
+				下面列出当前会进入 RSS 的文章，方便你直接浏览和核对。
+			</p>
+
+			<div class="mt-6 flex flex-col gap-3">
+				{feedPosts.map((post) => (
+					<a
+						class="rounded-2xl border border-black/8 px-5 py-4 transition hover:border-[var(--primary)]/35 hover:bg-black/[0.02] dark:border-white/10 dark:hover:bg-white/[0.03]"
+						href={getPostUrlBySlug(post.slug)}
+					>
+						<div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+							<div class="font-bold text-black/85 dark:text-white/85">{post.data.title}</div>
+							<time class="text-sm text-black/45 dark:text-white/45">
+								{post.data.published.toLocaleDateString("zh-CN")}
+							</time>
+						</div>
+						{post.data.description && (
+							<div class="mt-2 text-sm leading-6 text-black/60 dark:text-white/60">
+								{post.data.description}
+							</div>
+						)}
+					</a>
+				))}
+			</div>
+		</div>
+	</div>
+</MainGridLayout>
