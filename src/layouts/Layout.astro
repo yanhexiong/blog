@@ -257,8 +257,8 @@ function disableAnimation() {
 */
 
 const bannerEnabled = !!document.getElementById('banner-wrapper')
-const UTTERANCES_CLIENT_SRC = 'https://utteranc.es/client.js'
-const UTTERANCES_ORIGIN = 'https://utteranc.es'
+const GISCUS_CLIENT_SRC = 'https://giscus.app/client.js'
+const GISCUS_ORIGIN = 'https://giscus.app'
 let commentThemeObserver: MutationObserver | null = null
 
 function setClickOutsideToClose(panel: string, ignores: string[]) {
@@ -366,44 +366,48 @@ function showBanner() {
 	banner.classList.remove('opacity-0', 'scale-105');
 }
 
-function getUtterancesContainer() {
-	return document.querySelector<HTMLElement>('[data-utterances]')
+function getGiscusContainer() {
+	return document.querySelector<HTMLElement>('[data-giscus]')
 }
 
-function getUtterancesTheme(container?: HTMLElement) {
-	const target = container || getUtterancesContainer()
+function getGiscusTheme(container?: HTMLElement) {
+	const target = container || getGiscusContainer()
 	if (!target) {
-		return 'github-light'
+		return 'light'
 	}
 
 	return document.documentElement.classList.contains('dark')
-		? target.dataset.themeDark || 'github-dark'
-		: target.dataset.themeLight || 'github-light'
+		? target.dataset.themeDark || 'dark'
+		: target.dataset.themeLight || 'light'
 }
 
-function syncUtterancesTheme() {
-	const container = getUtterancesContainer()
+function syncGiscusTheme() {
+	const container = getGiscusContainer()
 	if (!container) return
 
-	const frame = container.querySelector<HTMLIFrameElement>('iframe.utterances-frame')
+	const frame = container.querySelector<HTMLIFrameElement>('iframe.giscus-frame')
 	if (!frame?.contentWindow) return
 
 	frame.contentWindow.postMessage(
-		{ type: 'set-theme', theme: getUtterancesTheme(container) },
-		UTTERANCES_ORIGIN,
+		{ giscus: { setConfig: { theme: getGiscusTheme(container) } } },
+		GISCUS_ORIGIN,
 	)
 }
 
-function initUtterances() {
-	const container = getUtterancesContainer()
+function initGiscus() {
+	const container = getGiscusContainer()
 	if (!container) return
 
 	const repo = container.dataset.repo
-	const issueTerm = container.dataset.issueTerm
-	if (!repo || !issueTerm) return
+	const repoId = container.dataset.repoId
+	const category = container.dataset.category
+	const categoryId = container.dataset.categoryId
+	const mapping = container.dataset.mapping
+	const inputPosition = container.dataset.inputPosition
+	if (!repo || !repoId || !category || !categoryId || !mapping || !inputPosition) return
 
-	if (container.querySelector('iframe.utterances-frame')) {
-		syncUtterancesTheme()
+	if (container.querySelector('iframe.giscus-frame')) {
+		syncGiscusTheme()
 		return
 	}
 
@@ -415,15 +419,23 @@ function initUtterances() {
 	container.replaceChildren()
 
 	const script = document.createElement('script')
-	script.src = UTTERANCES_CLIENT_SRC
+	script.src = GISCUS_CLIENT_SRC
 	script.async = true
 	script.crossOrigin = 'anonymous'
-	script.setAttribute('repo', repo)
-	script.setAttribute('issue-term', issueTerm)
-	script.setAttribute('theme', getUtterancesTheme(container))
+	script.setAttribute('data-repo', repo)
+	script.setAttribute('data-repo-id', repoId)
+	script.setAttribute('data-category', category)
+	script.setAttribute('data-category-id', categoryId)
+	script.setAttribute('data-mapping', mapping)
+	script.setAttribute('data-strict', container.dataset.strict || '0')
+	script.setAttribute('data-reactions-enabled', container.dataset.reactionsEnabled || '1')
+	script.setAttribute('data-emit-metadata', container.dataset.emitMetadata || '0')
+	script.setAttribute('data-input-position', inputPosition)
+	script.setAttribute('data-theme', getGiscusTheme(container))
+	script.setAttribute('data-lang', container.dataset.lang || document.documentElement.lang || 'en')
 	script.setAttribute('crossorigin', 'anonymous')
-	if (container.dataset.label) {
-		script.setAttribute('label', container.dataset.label)
+	if (container.dataset.term) {
+		script.setAttribute('data-term', container.dataset.term)
 	}
 
 	container.appendChild(script)
@@ -433,7 +445,7 @@ function initCommentThemeObserver() {
 	if (commentThemeObserver) return
 
 	commentThemeObserver = new MutationObserver(() => {
-		syncUtterancesTheme()
+		syncGiscusTheme()
 	})
 
 	commentThemeObserver.observe(document.documentElement, {
@@ -448,7 +460,7 @@ function init() {
 	loadHue();
 	initCustomScrollbar();
 	showBanner();
-	initUtterances();
+	initGiscus();
 	initCommentThemeObserver();
 }
 
@@ -513,7 +525,7 @@ const setup = () => {
 		if (heightExtend) {
 			heightExtend.classList.remove('hidden')
 		}
-		initUtterances()
+		initGiscus()
 	});
 	window.swup.hooks.on('visit:end', (_visit: {to: {url: string}}) => {
 		setTimeout(() => {

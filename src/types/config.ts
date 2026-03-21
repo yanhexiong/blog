@@ -80,8 +80,16 @@ export type LicenseConfig = {
 export type CommentConfig = {
 	enable: boolean;
 	repo: string;
-	issueTerm: "pathname" | "url" | "title" | "og:title";
-	label?: string;
+	repoId: string;
+	category: string;
+	categoryId: string;
+	mapping: "pathname" | "url" | "title" | "og:title" | "specific" | "number";
+	term?: string;
+	strict: boolean;
+	reactionsEnabled: boolean;
+	emitMetadata: boolean;
+	inputPosition: "top" | "bottom";
+	lang?: string;
 	theme: {
 		light: string;
 		dark: string;

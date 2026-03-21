@@ -78,11 +78,17 @@ export const licenseConfig: LicenseConfig = {
 export const commentConfig: CommentConfig = {
 	enable: true,
 	repo: "yanhexiong/blog-comments",
-	issueTerm: "pathname",
-	label: "comment",
+	repoId: "",
+	category: "",
+	categoryId: "",
+	mapping: "pathname",
+	strict: false,
+	reactionsEnabled: true,
+	emitMetadata: false,
+	inputPosition: "bottom",
 	theme: {
-		light: "github-light",
-		dark: "github-dark",
+		light: "light",
+		dark: "dark",
 	},
 };
 
