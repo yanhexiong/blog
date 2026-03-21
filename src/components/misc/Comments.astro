@@ -1,10 +1,13 @@
 ---
 import I18nKey from "@i18n/i18nKey";
 import { i18n } from "@i18n/translation";
-import { commentConfig } from "@/config";
+import { commentConfig, siteConfig } from "@/config";
 
 const showComments =
 	commentConfig.enable && commentConfig.repo.trim().length > 0;
+const commentsHelperText = siteConfig.lang.toLowerCase().startsWith("zh")
+	? "使用 GitHub 账号登录后即可评论，评论内容会保存在 GitHub 仓库中。"
+	: "Sign in with your GitHub account to comment. Comments are stored in a GitHub repository.";
 ---
 
 {showComments && (
@@ -13,6 +16,9 @@ const showComments =
 		<h2 class="mb-5 text-xl font-bold text-black/90 dark:text-white/90">
 			{i18n(I18nKey.comments)}
 		</h2>
+		<p class="mb-4 text-sm leading-6 text-black/60 dark:text-white/60">
+			{commentsHelperText}
+		</p>
 		<div
 			class="min-h-[12rem]"
 			data-utterances
