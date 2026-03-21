@@ -1,9 +1,31 @@
 ---
 import type { CollectionEntry } from "astro:content";
+import { getSortedPostsList } from "@utils/content-utils";
 import { getPostUrlBySlug } from "@utils/url-utils";
 import PostCard from "./PostCard.astro";
 
 const { page } = Astro.props;
+
+const hiddenPosts = (
+	await getSortedPostsList({ includeHiddenFromLists: true })
+).filter((post) => post.data.hideFromLists === true);
+
+const seriesChildrenMap = hiddenPosts.reduce((map, post) => {
+	const parentSlug = post.slug.split("/").slice(0, -1).join("/");
+	if (!parentSlug) {
+		return map;
+	}
+
+	const children = map.get(parentSlug) || [];
+	children.push(post);
+	children.sort((a, b) => {
+		const dateA = new Date(a.data.published).getTime();
+		const dateB = new Date(b.data.published).getTime();
+		return dateA === dateB ? a.slug.localeCompare(b.slug) : dateA - dateB;
+	});
+	map.set(parentSlug, children);
+	return map;
+}, new Map<string, Awaited<ReturnType<typeof getSortedPostsList>>>());
 
 let delay = 0;
 const interval = 50;
@@ -21,6 +43,12 @@ const interval = 50;
                 image={entry.data.image}
                 description={entry.data.description}
                 draft={entry.data.draft}
+                seriesChildren={(seriesChildrenMap.get(entry.slug) || []).map((child) => ({
+                    title: child.data.title,
+                    url: getPostUrlBySlug(child.slug),
+                    description: child.data.description,
+                    published: child.data.published,
+                }))}
                 class:list="onload-animation"
                 style={`animation-delay: calc(var(--content-delay) + ${delay++ * interval}ms);`}
         ></PostCard>
