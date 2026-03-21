@@ -9,6 +9,10 @@ draft: false
 
 Linux教程系列会从基础到进阶逐步整理常见 Linux 使用场景，作为整个系列的总入口。
 
+## 当前章节
+
+- [1.基础Shell指令](/posts/linux-tutorial-series/1-basic-shell-commands/)
+
 ## 系列定位
 
 这个系列主要面向以下读者：
