@@ -47,7 +47,7 @@ export const navBarConfig: NavBarConfig = {
 };
 
 export const profileConfig: ProfileConfig = {
-	avatar: "https://github.com/yanhexiong.png",
+	avatar: "assets/images/profile.png",
 	name: "Harrison Yan",
 	bio: "AI 方向学生，记录 Linux、开发与智能体相关学习笔记。",
 	links: [
