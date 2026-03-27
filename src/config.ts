@@ -1,4 +1,5 @@
 import type {
+	AnalyticsConfig,
 	CommentConfig,
 	ExpressiveCodeConfig,
 	LicenseConfig,
@@ -73,6 +74,18 @@ export const licenseConfig: LicenseConfig = {
 	enable: true,
 	name: "CC BY-NC-SA 4.0",
 	url: "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+};
+
+export const analyticsConfig: AnalyticsConfig = {
+	enable: true,
+	scriptUrl: "https://cloud.umami.is/script.js",
+	websiteId: "3e7f68ba-c8f6-43e3-84e2-4e62ed9dc230",
+	hostUrl: "",
+	domains: ["blog.727613.xyz"],
+	autoTrack: true,
+	doNotTrack: true,
+	shareUrl: "https://cloud.umami.is/share/VMkUrHT0JZ8tocmF",
+	shareLabel: "统计",
 };
 
 export const commentConfig: CommentConfig = {

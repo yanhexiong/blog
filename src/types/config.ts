@@ -77,6 +77,18 @@ export type LicenseConfig = {
 	url: string;
 };
 
+export type AnalyticsConfig = {
+	enable: boolean;
+	scriptUrl: string;
+	websiteId: string;
+	hostUrl?: string;
+	domains?: string[];
+	autoTrack?: boolean;
+	doNotTrack?: boolean;
+	shareUrl?: string;
+	shareLabel?: string;
+};
+
 export type CommentConfig = {
 	enable: boolean;
 	repo: string;

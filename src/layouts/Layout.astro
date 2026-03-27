@@ -4,7 +4,7 @@ import "@fontsource/roboto/500.css";
 import "@fontsource/roboto/700.css";
 
 import ConfigCarrier from "@components/ConfigCarrier.astro";
-import { profileConfig, siteConfig } from "@/config";
+import { analyticsConfig, profileConfig, siteConfig } from "@/config";
 import {
 	AUTO_MODE,
 	BANNER_HEIGHT,
@@ -59,6 +59,15 @@ const favicons: Favicon[] =
 const siteOrigin = Astro.site ?? new URL("https://blog.727613.xyz");
 const rssUrl = new URL("rss.xml", siteOrigin).toString();
 const sitemapUrl = new URL("sitemap-index.xml", siteOrigin).toString();
+const umamiDomains =
+	analyticsConfig.domains
+		?.map((domain) => domain.trim())
+		.filter(Boolean)
+		.join(",") || "";
+const umamiEnabled =
+	analyticsConfig.enable &&
+	analyticsConfig.scriptUrl.trim() !== "" &&
+	analyticsConfig.websiteId.trim() !== "";
 
 // const siteLang = siteConfig.lang.replace('_', '-')
 if (!lang) {
@@ -148,6 +157,18 @@ const bannerOffset =
 
 		<slot name="head"></slot>
 
+		{umamiEnabled && (
+			<script
+				is:inline
+				defer
+				src={analyticsConfig.scriptUrl}
+				data-website-id={analyticsConfig.websiteId}
+				data-host-url={analyticsConfig.hostUrl?.trim() || undefined}
+				data-domains={umamiDomains || undefined}
+				data-auto-track={analyticsConfig.autoTrack === false ? "false" : undefined}
+				data-do-not-track={analyticsConfig.doNotTrack ? "true" : undefined}
+			></script>
+		)}
 		<link rel="alternate" type="application/rss+xml" title={profileConfig.name} href={rssUrl}/>
 		<link rel="sitemap" type="application/xml" href={sitemapUrl} />
 
