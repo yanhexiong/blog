@@ -36,6 +36,7 @@ draft: false
 ## 章节目录
 
 - [1.基础Shell指令](/posts/linux-tutorial-series/1-basic-shell-commands/)
+- [1.基础Shell指令-2](/posts/linux-tutorial-series/1-basic-shell-commands-2/)
 
 ## 学习目标
 
