@@ -36,4 +36,9 @@ export const vi: Translation = {
 	[Key.publishedAt]: "Đăng vào lúc",
 	[Key.license]: "Giấy phép bản quyền",
 	[Key.revisionHistory]: "Revision History",
+	[Key.revisionChanges]: "This edit",
+	[Key.revisionContent]: "Full article at that time",
+	[Key.revisionEditedAt]: "Edited",
+	[Key.revisionBefore]: "Before",
+	[Key.revisionAfter]: "After",
 };

@@ -36,4 +36,9 @@ export const ja: Translation = {
 	[Key.publishedAt]: "公開日",
 	[Key.license]: "ライセンス",
 	[Key.revisionHistory]: "Revision History",
+	[Key.revisionChanges]: "This edit",
+	[Key.revisionContent]: "Full article at that time",
+	[Key.revisionEditedAt]: "Edited",
+	[Key.revisionBefore]: "Before",
+	[Key.revisionAfter]: "After",
 };

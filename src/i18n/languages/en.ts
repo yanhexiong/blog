@@ -36,4 +36,9 @@ export const en: Translation = {
 	[Key.publishedAt]: "Published at",
 	[Key.license]: "License",
 	[Key.revisionHistory]: "Revision History",
+	[Key.revisionChanges]: "This edit",
+	[Key.revisionContent]: "Full article at that time",
+	[Key.revisionEditedAt]: "Edited",
+	[Key.revisionBefore]: "Before",
+	[Key.revisionAfter]: "After",
 };

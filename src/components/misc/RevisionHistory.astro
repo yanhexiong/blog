@@ -3,12 +3,29 @@ import { Icon } from "astro-icon/components";
 import { siteConfig } from "../../config";
 import I18nKey from "../../i18n/i18nKey";
 import { i18n } from "../../i18n/translation";
-import type { GitRevision } from "../../utils/git-history";
+import type { GitRevision, GitRevisionChange } from "../../utils/git-history";
+import { renderRevisionMarkdown } from "../../utils/revision-markdown";
 
 interface Props {
 	revisions: GitRevision[];
 	class?: string;
 }
+
+type RenderedRevisionChange = GitRevisionChange & {
+	beforeHtml: string;
+	afterHtml: string;
+	renderAsCode: boolean;
+	metadataRows: {
+		key: string;
+		before?: string;
+		after?: string;
+	}[];
+};
+
+type RenderedRevision = GitRevision & {
+	bodyHtml: string;
+	changes: RenderedRevisionChange[];
+};
 
 const { revisions } = Astro.props;
 const className = Astro.props.class ?? "";
@@ -23,8 +40,79 @@ function formatCommittedAt(committedAt: string): string {
 		minute: "2-digit",
 	}).format(new Date(committedAt));
 }
+
+function parseMetadataSnippet(text: string): Map<string, string> {
+	const metadata = new Map<string, string>();
+
+	for (const line of text.split("\n")) {
+		const match = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line.trim());
+		if (!match) {
+			continue;
+		}
+		metadata.set(match[1], match[2]);
+	}
+
+	return metadata;
+}
+
+function getMetadataRows(change: GitRevisionChange) {
+	const beforeMetadata = parseMetadataSnippet(change.before);
+	const afterMetadata = parseMetadataSnippet(change.after);
+	const keys = new Set([...beforeMetadata.keys(), ...afterMetadata.keys()]);
+
+	return [...keys]
+		.map((key) => ({
+			key,
+			before: beforeMetadata.get(key),
+			after: afterMetadata.get(key),
+		}))
+		.filter((row) => row.before !== row.after);
+}
+
+function containsHtmlFragment(text: string): boolean {
+	return /^\s*<\/?[A-Za-z][^>\n]*>?/m.test(text);
+}
+
+const renderedRevisions: RenderedRevision[] = await Promise.all(
+	revisions.map(async (revision) => {
+		const changes: RenderedRevisionChange[] = await Promise.all(
+			revision.changes.map(async (change) => {
+				const renderAsCode =
+					change.kind === "content" &&
+					(containsHtmlFragment(change.before) ||
+						containsHtmlFragment(change.after));
+
+				return {
+					...change,
+					beforeHtml:
+						change.kind === "content" && change.before.trim() && !renderAsCode
+							? await renderRevisionMarkdown(change.before, {
+									allowHtml: false,
+								})
+							: "",
+					afterHtml:
+						change.kind === "content" && change.after.trim() && !renderAsCode
+							? await renderRevisionMarkdown(change.after, {
+									allowHtml: false,
+								})
+							: "",
+					renderAsCode,
+					metadataRows: getMetadataRows(change),
+				};
+			}),
+		);
+
+		return {
+			...revision,
+			bodyHtml: await renderRevisionMarkdown(revision.bodyContent, {
+				allowHtml: true,
+			}),
+			changes,
+		};
+	}),
+);
 ---
-<details class={`card-base overflow-hidden px-6 py-5 ${className}`}>
+<details class={`card-base overflow-hidden px-6 py-5 ${className}`} data-pagefind-ignore>
     <summary class="list-none cursor-pointer">
         <div class="flex items-center justify-between gap-4">
             <div class="flex items-center gap-3">
@@ -40,7 +128,7 @@ function formatCommittedAt(committedAt: string): string {
             </div>
             <div class="flex items-center gap-3 shrink-0">
                 <div class="transition rounded-full bg-black/5 dark:bg-white/10 px-3 py-1 text-sm font-medium text-black/50 dark:text-white/50">
-                    {revisions.length}
+                    {renderedRevisions.length}
                 </div>
                 <Icon
                     name="material-symbols:expand-more-rounded"
@@ -52,31 +140,130 @@ function formatCommittedAt(committedAt: string): string {
     </summary>
 
     <div class="mt-4 border-[var(--line-divider)] border-dashed border-t pt-4 flex flex-col gap-3">
-        {revisions.map((revision) => (
-            <div class="rounded-2xl bg-black/[0.03] dark:bg-white/[0.04] px-4 py-3">
-                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-                    <div class="transition text-sm text-black/40 dark:text-white/40">
-                        {formatCommittedAt(revision.committedAt)}
-                    </div>
-                    {revision.url ? (
-                        <a
-                            href={revision.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class="link font-mono text-sm text-[var(--primary)]"
-                        >
-                            {revision.shortHash}
-                        </a>
-                    ) : (
-                        <div class="transition font-mono text-sm text-black/40 dark:text-white/40">
-                            {revision.shortHash}
+        {renderedRevisions.map((revision: RenderedRevision) => (
+            <details class="rounded-2xl bg-black/[0.03] dark:bg-white/[0.04] px-4 py-3">
+                <summary class="list-none cursor-pointer">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <div class="transition break-words font-semibold text-black/80 dark:text-white/80">
+                                {i18n(I18nKey.revisionEditedAt)} {formatCommittedAt(revision.committedAt)}
+                            </div>
+                            <div class="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                                {revision.addedLines > 0 && (
+                                    <div class="rounded-full bg-emerald-500/10 px-2.5 py-1 font-medium text-emerald-700 dark:text-emerald-300">
+                                        +{revision.addedLines}
+                                    </div>
+                                )}
+                                {revision.removedLines > 0 && (
+                                    <div class="rounded-full bg-rose-500/10 px-2.5 py-1 font-medium text-rose-700 dark:text-rose-300">
+                                        -{revision.removedLines}
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    )}
+                        <Icon
+                            name="material-symbols:expand-more-rounded"
+                            data-expand-icon
+                            class="mt-1 shrink-0 text-[1.35rem] text-black/30 dark:text-white/30"
+                        ></Icon>
+                    </div>
+                </summary>
+
+                <div class="mt-4 flex flex-col gap-4">
+                    {revision.changes.map((change: RenderedRevisionChange) => (
+                        <section class="rounded-2xl border border-black/5 bg-white/60 p-4 dark:border-white/10 dark:bg-black/10">
+                            {change.kind === "metadata" && change.metadataRows.length > 0 && (
+                                <div class="flex flex-col gap-3">
+                                    <div class="flex items-center gap-2 text-sm font-semibold text-black/70 dark:text-white/70">
+                                        <Icon name="material-symbols:tune-rounded"></Icon>
+                                        {i18n(I18nKey.revisionChanges)}
+                                    </div>
+                                    <div class="flex flex-col gap-2">
+                                        {change.metadataRows.map((row) => (
+                                            <div class="flex flex-col gap-2 rounded-xl bg-black/[0.03] px-3 py-2 dark:bg-white/[0.04] md:flex-row md:items-center md:justify-between">
+                                                <div class="font-mono text-sm text-black/60 dark:text-white/60">
+                                                    {row.key}
+                                                </div>
+                                                <div class="flex flex-wrap items-center gap-2 text-sm">
+                                                    {row.before !== undefined && (
+                                                        <div class="rounded-full bg-rose-500/10 px-2.5 py-1 text-rose-700 dark:text-rose-300">
+                                                            {row.before}
+                                                        </div>
+                                                    )}
+                                                    {row.after !== undefined && (
+                                                        <div class="rounded-full bg-emerald-500/10 px-2.5 py-1 text-emerald-700 dark:text-emerald-300">
+                                                            {row.after}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {change.kind === "content" && change.after.trim() && (
+                                <div class="flex flex-col gap-3">
+                                    <div class="flex items-center gap-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                                        <Icon name="material-symbols:add-rounded"></Icon>
+                                        {i18n(I18nKey.revisionAfter)}
+                                    </div>
+                                    {change.renderAsCode ? (
+                                        <pre class="rounded-xl bg-black/[0.03] p-3 font-mono text-[0.8rem] leading-6 text-black/70 dark:bg-white/[0.04] dark:text-white/70">{change.after}</pre>
+                                    ) : change.kind === "content" && change.afterHtml ? (
+                                        <div
+                                            class="revision-markdown revision-markdown-after prose prose-base !max-w-none custom-md dark:prose-invert"
+                                            set:html={change.afterHtml}
+                                        ></div>
+                                    ) : (
+                                        <pre class="rounded-xl bg-black/[0.03] p-3 font-mono text-[0.8rem] leading-6 text-black/70 dark:bg-white/[0.04] dark:text-white/70">{change.after}</pre>
+                                    )}
+                                </div>
+                            )}
+
+                            {change.kind === "content" && change.before.trim() && (
+                                <div class:list={["flex flex-col gap-3", { "mt-5": change.after.trim() }]}>
+                                    <div class="flex items-center gap-2 text-sm font-semibold text-rose-700 dark:text-rose-300">
+                                        <Icon name="material-symbols:remove-rounded"></Icon>
+                                        {i18n(I18nKey.revisionBefore)}
+                                    </div>
+                                    {change.renderAsCode ? (
+                                        <pre class="rounded-xl bg-black/[0.03] p-3 font-mono text-[0.8rem] leading-6 text-black/70 dark:bg-white/[0.04] dark:text-white/70">{change.before}</pre>
+                                    ) : change.kind === "content" && change.beforeHtml ? (
+                                        <div
+                                            class="revision-markdown revision-markdown-before prose prose-base !max-w-none custom-md dark:prose-invert"
+                                            set:html={change.beforeHtml}
+                                        ></div>
+                                    ) : (
+                                        <pre class="rounded-xl bg-black/[0.03] p-3 font-mono text-[0.8rem] leading-6 text-black/70 dark:bg-white/[0.04] dark:text-white/70">{change.before}</pre>
+                                    )}
+                                </div>
+                            )}
+                        </section>
+                    ))}
+
+                    <details class="rounded-2xl border border-black/5 bg-white/60 p-4 dark:border-white/10 dark:bg-black/10">
+                        <summary class="list-none cursor-pointer">
+                            <div class="flex items-center justify-between gap-4">
+                                <div class="flex items-center gap-2 text-sm font-semibold text-black/70 dark:text-white/70">
+                                    <Icon name="material-symbols:article-outline-rounded"></Icon>
+                                    {i18n(I18nKey.revisionContent)}
+                                </div>
+                                <Icon
+                                    name="material-symbols:expand-more-rounded"
+                                    data-expand-icon
+                                    class="text-[1.25rem] text-black/30 dark:text-white/30"
+                                ></Icon>
+                            </div>
+                        </summary>
+
+                        <div
+                            class="revision-markdown prose prose-base !max-w-none custom-md mt-4 dark:prose-invert"
+                            set:html={revision.bodyHtml}
+                        ></div>
+                    </details>
                 </div>
-                <div class="mt-1 transition break-words text-black/75 dark:text-white/75">
-                    {revision.subject}
-                </div>
-            </div>
+            </details>
         ))}
     </div>
 </details>
@@ -92,5 +279,21 @@ function formatCommittedAt(committedAt: string): string {
 
 	details[open] [data-expand-icon] {
 		transform: rotate(180deg);
+	}
+
+	pre {
+		margin: 0;
+		white-space: pre-wrap;
+	}
+
+	.revision-markdown-after {
+		border-left: 0.25rem solid rgb(16 185 129 / 0.35);
+		padding-left: 1rem;
+	}
+
+	.revision-markdown-before {
+		border-left: 0.25rem solid rgb(244 63 94 / 0.3);
+		padding-left: 1rem;
+		opacity: 0.82;
 	}
 </style>

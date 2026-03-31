@@ -36,4 +36,9 @@ export const id: Translation = {
 	[Key.publishedAt]: "Diterbitkan pada",
 	[Key.license]: "Lisensi",
 	[Key.revisionHistory]: "Revision History",
+	[Key.revisionChanges]: "This edit",
+	[Key.revisionContent]: "Full article at that time",
+	[Key.revisionEditedAt]: "Edited",
+	[Key.revisionBefore]: "Before",
+	[Key.revisionAfter]: "After",
 };

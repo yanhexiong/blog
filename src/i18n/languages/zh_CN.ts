@@ -36,4 +36,9 @@ export const zh_CN: Translation = {
 	[Key.publishedAt]: "发布于",
 	[Key.license]: "许可协议",
 	[Key.revisionHistory]: "\u4fee\u8ba2\u5386\u53f2",
+	[Key.revisionChanges]: "\u672c\u6b21\u4fee\u6539",
+	[Key.revisionContent]: "\u5f53\u65f6\u5168\u6587",
+	[Key.revisionEditedAt]: "\u7f16\u8f91\u4e8e",
+	[Key.revisionBefore]: "\u4fee\u6539\u524d",
+	[Key.revisionAfter]: "\u4fee\u6539\u540e",
 };

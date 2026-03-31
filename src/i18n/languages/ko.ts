@@ -36,4 +36,9 @@ export const ko: Translation = {
 	[Key.publishedAt]: "게시일",
 	[Key.license]: "라이선스",
 	[Key.revisionHistory]: "Revision History",
+	[Key.revisionChanges]: "This edit",
+	[Key.revisionContent]: "Full article at that time",
+	[Key.revisionEditedAt]: "Edited",
+	[Key.revisionBefore]: "Before",
+	[Key.revisionAfter]: "After",
 };

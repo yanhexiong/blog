@@ -33,6 +33,11 @@ enum I18nKey {
 	publishedAt = "publishedAt",
 	license = "license",
 	revisionHistory = "revisionHistory",
+	revisionChanges = "revisionChanges",
+	revisionContent = "revisionContent",
+	revisionEditedAt = "revisionEditedAt",
+	revisionBefore = "revisionBefore",
+	revisionAfter = "revisionAfter",
 }
 
 export default I18nKey;
