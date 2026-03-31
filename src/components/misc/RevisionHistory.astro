@@ -1,0 +1,96 @@
+---
+import { Icon } from "astro-icon/components";
+import { siteConfig } from "../../config";
+import I18nKey from "../../i18n/i18nKey";
+import { i18n } from "../../i18n/translation";
+import type { GitRevision } from "../../utils/git-history";
+
+interface Props {
+	revisions: GitRevision[];
+	class?: string;
+}
+
+const { revisions } = Astro.props;
+const className = Astro.props.class ?? "";
+const locale = (siteConfig.lang || "en").replace("_", "-");
+
+function formatCommittedAt(committedAt: string): string {
+	return new Intl.DateTimeFormat(locale, {
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+		hour: "2-digit",
+		minute: "2-digit",
+	}).format(new Date(committedAt));
+}
+---
+<details class={`card-base overflow-hidden px-6 py-5 ${className}`}>
+    <summary class="list-none cursor-pointer">
+        <div class="flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="transition h-10 w-10 rounded-xl bg-black/5 dark:bg-white/10 text-black/50 dark:text-white/50 flex items-center justify-center shrink-0">
+                    <Icon name="material-symbols:history-rounded"></Icon>
+                </div>
+                <div>
+                    <div class="transition font-bold text-black/75 dark:text-white/75">
+                        {i18n(I18nKey.revisionHistory)}
+                    </div>
+                    <div class="transition text-sm text-black/40 dark:text-white/40">Git</div>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 shrink-0">
+                <div class="transition rounded-full bg-black/5 dark:bg-white/10 px-3 py-1 text-sm font-medium text-black/50 dark:text-white/50">
+                    {revisions.length}
+                </div>
+                <Icon
+                    name="material-symbols:expand-more-rounded"
+                    data-expand-icon
+                    class="text-[1.5rem] text-black/30 dark:text-white/30"
+                ></Icon>
+            </div>
+        </div>
+    </summary>
+
+    <div class="mt-4 border-[var(--line-divider)] border-dashed border-t pt-4 flex flex-col gap-3">
+        {revisions.map((revision) => (
+            <div class="rounded-2xl bg-black/[0.03] dark:bg-white/[0.04] px-4 py-3">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                    <div class="transition text-sm text-black/40 dark:text-white/40">
+                        {formatCommittedAt(revision.committedAt)}
+                    </div>
+                    {revision.url ? (
+                        <a
+                            href={revision.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="link font-mono text-sm text-[var(--primary)]"
+                        >
+                            {revision.shortHash}
+                        </a>
+                    ) : (
+                        <div class="transition font-mono text-sm text-black/40 dark:text-white/40">
+                            {revision.shortHash}
+                        </div>
+                    )}
+                </div>
+                <div class="mt-1 transition break-words text-black/75 dark:text-white/75">
+                    {revision.subject}
+                </div>
+            </div>
+        ))}
+    </div>
+</details>
+
+<style>
+	summary {
+		list-style: none;
+	}
+
+	summary::-webkit-details-marker {
+		display: none;
+	}
+
+	details[open] [data-expand-icon] {
+		transform: rotate(180deg);
+	}
+</style>

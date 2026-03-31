@@ -3,10 +3,12 @@ import path from "node:path";
 import Comments from "@components/misc/Comments.astro";
 import License from "@components/misc/License.astro";
 import Markdown from "@components/misc/Markdown.astro";
+import RevisionHistory from "@components/misc/RevisionHistory.astro";
 import I18nKey from "@i18n/i18nKey";
 import { i18n } from "@i18n/translation";
 import MainGridLayout from "@layouts/MainGridLayout.astro";
 import { getSortedPosts } from "@utils/content-utils";
+import { getGitRevisions } from "@utils/git-history";
 import { getDir, getPostUrlBySlug } from "@utils/url-utils";
 import { Icon } from "astro-icon/components";
 import { licenseConfig } from "src/config";
@@ -27,6 +29,9 @@ const { entry } = Astro.props;
 const { Content, headings } = await entry.render();
 
 const { remarkPluginFrontmatter } = await entry.render();
+const revisions = getGitRevisions(
+	path.join("src", "content", "posts", entry.id),
+);
 
 const jsonLd = {
 	"@context": "https://schema.org",
@@ -107,6 +112,9 @@ const jsonLd = {
                 <Content />
             </Markdown>
 
+            {revisions.length > 0 && (
+                <RevisionHistory revisions={revisions} class="mb-6 onload-animation"></RevisionHistory>
+            )}
             {licenseConfig.enable && <License title={entry.data.title} slug={entry.slug} pubDate={entry.data.published} class="mb-6 rounded-xl license-container onload-animation"></License>}
             <Comments></Comments>
 
