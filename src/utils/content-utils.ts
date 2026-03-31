@@ -2,6 +2,7 @@ import { type CollectionEntry, getCollection } from "astro:content";
 import I18nKey from "@i18n/i18nKey";
 import { i18n } from "@i18n/translation";
 import { getCategoryUrl } from "@utils/url-utils.ts";
+import getReadingTime from "reading-time";
 
 type PostQueryOptions = {
 	includeHiddenFromLists?: boolean;
@@ -86,6 +87,12 @@ export type Category = {
 	url: string;
 };
 
+export type ProfileStats = {
+	articleCount: number;
+	collectionCount: number;
+	wordCount: number;
+};
+
 export async function getCategoryList(): Promise<Category[]> {
 	const allBlogPosts = await getRawSortedPosts();
 	const count: { [key: string]: number } = {};
@@ -117,4 +124,28 @@ export async function getCategoryList(): Promise<Category[]> {
 		});
 	}
 	return ret;
+}
+
+export async function getProfileStats(): Promise<ProfileStats> {
+	const allBlogPosts = await getRawSortedPosts({
+		includeHiddenFromLists: true,
+	});
+	const slugSet = new Set(allBlogPosts.map((post) => post.slug));
+	const collectionSlugs = new Set<string>();
+
+	for (const post of allBlogPosts) {
+		const parentSlug = post.slug.split("/").slice(0, -1).join("/");
+		if (parentSlug && slugSet.has(parentSlug)) {
+			collectionSlugs.add(parentSlug);
+		}
+	}
+
+	return {
+		articleCount: allBlogPosts.filter((post) => !collectionSlugs.has(post.slug))
+			.length,
+		collectionCount: collectionSlugs.size,
+		wordCount: allBlogPosts.reduce((total, post) => {
+			return total + getReadingTime(post.body).words;
+		}, 0),
+	};
 }

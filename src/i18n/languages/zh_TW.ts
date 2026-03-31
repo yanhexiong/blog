@@ -41,4 +41,7 @@ export const zh_TW: Translation = {
 	[Key.revisionEditedAt]: "\u7de8\u8f2f\u65bc",
 	[Key.revisionBefore]: "\u4fee\u6539\u524d",
 	[Key.revisionAfter]: "\u4fee\u6539\u5f8c",
+	[Key.profileArticles]: "\u6587\u7ae0",
+	[Key.profileCollections]: "\u5408\u96c6",
+	[Key.profileWords]: "\u5b57\u6578",
 };

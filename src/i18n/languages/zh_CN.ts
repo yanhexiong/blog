@@ -41,4 +41,7 @@ export const zh_CN: Translation = {
 	[Key.revisionEditedAt]: "\u7f16\u8f91\u4e8e",
 	[Key.revisionBefore]: "\u4fee\u6539\u524d",
 	[Key.revisionAfter]: "\u4fee\u6539\u540e",
+	[Key.profileArticles]: "\u6587\u7ae0",
+	[Key.profileCollections]: "\u5408\u96c6",
+	[Key.profileWords]: "\u5b57\u6570",
 };

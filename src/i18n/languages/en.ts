@@ -41,4 +41,7 @@ export const en: Translation = {
 	[Key.revisionEditedAt]: "Edited",
 	[Key.revisionBefore]: "Before",
 	[Key.revisionAfter]: "After",
+	[Key.profileArticles]: "Articles",
+	[Key.profileCollections]: "Collections",
+	[Key.profileWords]: "Words",
 };

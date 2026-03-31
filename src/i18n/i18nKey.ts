@@ -38,6 +38,9 @@ enum I18nKey {
 	revisionEditedAt = "revisionEditedAt",
 	revisionBefore = "revisionBefore",
 	revisionAfter = "revisionAfter",
+	profileArticles = "profileArticles",
+	profileCollections = "profileCollections",
+	profileWords = "profileWords",
 }
 
 export default I18nKey;

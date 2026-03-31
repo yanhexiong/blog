@@ -1,10 +1,15 @@
 ---
 import { Icon } from "astro-icon/components";
 import { profileConfig } from "../../config";
+import I18nKey from "../../i18n/i18nKey";
+import { i18n } from "../../i18n/translation";
+import { getProfileStats } from "../../utils/content-utils";
 import { url } from "../../utils/url-utils";
 import ImageWrapper from "../misc/ImageWrapper.astro";
 
 const config = profileConfig;
+const stats = await getProfileStats();
+const formatter = new Intl.NumberFormat("zh-CN");
 ---
 <div class="card-base p-3">
     <a aria-label="Go to About Page" href={url('/about/')}
@@ -22,6 +27,20 @@ const config = profileConfig;
         <div class="font-bold text-xl text-center mb-1 dark:text-neutral-50 transition">{config.name}</div>
         <div class="h-1 w-5 bg-[var(--primary)] mx-auto rounded-full mb-2 transition"></div>
         <div class="text-center text-neutral-400 mb-2.5 transition">{config.bio}</div>
+        <div class="grid grid-cols-3 gap-2 mb-3">
+            <div class="rounded-xl bg-black/[0.03] dark:bg-white/[0.04] px-2 py-2 text-center">
+                <div class="text-lg font-bold text-black/80 dark:text-white/80 transition">{formatter.format(stats.articleCount)}</div>
+                <div class="text-xs text-black/45 dark:text-white/45 transition">{i18n(I18nKey.profileArticles)}</div>
+            </div>
+            <div class="rounded-xl bg-black/[0.03] dark:bg-white/[0.04] px-2 py-2 text-center">
+                <div class="text-lg font-bold text-black/80 dark:text-white/80 transition">{formatter.format(stats.collectionCount)}</div>
+                <div class="text-xs text-black/45 dark:text-white/45 transition">{i18n(I18nKey.profileCollections)}</div>
+            </div>
+            <div class="rounded-xl bg-black/[0.03] dark:bg-white/[0.04] px-2 py-2 text-center">
+                <div class="text-lg font-bold text-black/80 dark:text-white/80 transition">{formatter.format(stats.wordCount)}</div>
+                <div class="text-xs text-black/45 dark:text-white/45 transition">{i18n(I18nKey.profileWords)}</div>
+            </div>
+        </div>
         <div class="flex flex-wrap gap-2 justify-center mb-1">
             {config.links.map(item =>
                     <a rel="me" aria-label={item.name} href={item.url} target="_blank"
