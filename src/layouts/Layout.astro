@@ -216,6 +216,50 @@ const bannerOffset =
 	.navbar-hidden {
 		@apply opacity-0 -translate-y-16
 	}
+
+	pre.mermaid {
+		@apply my-6 overflow-x-auto rounded-2xl border border-black/5 bg-[var(--card-bg)] px-4 py-5 shadow-[0_1rem_2.5rem_-1.75rem_rgba(0,0,0,0.22)] dark:border-white/10;
+	}
+
+	pre.mermaid svg {
+		@apply mx-auto h-auto max-w-full;
+	}
+
+	pre.mermaid .label {
+		font-family: "Roboto", system-ui, sans-serif !important;
+	}
+
+	pre.mermaid .node rect,
+	pre.mermaid .node polygon,
+	pre.mermaid .node circle,
+	pre.mermaid .node path {
+		stroke-width: 1.5px !important;
+	}
+
+	pre.mermaid .node rect,
+	pre.mermaid .node polygon {
+		rx: 18px;
+		ry: 18px;
+	}
+
+	pre.mermaid .edgePath path {
+		stroke-width: 2px !important;
+		stroke-linecap: round;
+	}
+
+	pre.mermaid .edgeLabel rect {
+		fill: var(--card-bg) !important;
+		opacity: 0.98;
+	}
+
+	pre.mermaid .cluster rect {
+		fill: color-mix(in oklab, var(--btn-regular-bg) 88%, white) !important;
+		stroke: var(--line-divider) !important;
+	}
+
+	:root.dark pre.mermaid .cluster rect {
+		fill: color-mix(in oklab, var(--btn-regular-bg) 92%, black) !important;
+	}
 }
 </style>
 
@@ -621,6 +665,128 @@ window.onresize = () => {
 	document.documentElement.style.setProperty('--banner-height-extend', `${offset}px`);
 }
 
+</script>
+
+<script is:inline>
+let mermaidModulePromise;
+let mermaidThemeObserver;
+let mermaidRenderTimer;
+
+async function loadMermaidModule() {
+	if (!mermaidModulePromise) {
+		mermaidModulePromise = import("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs");
+	}
+
+	const module = await mermaidModulePromise;
+	return module.default;
+}
+
+async function renderMermaidDiagrams() {
+	const diagrams = Array.from(document.querySelectorAll("pre.mermaid"));
+	if (diagrams.length === 0) return;
+
+	const rootStyle = getComputedStyle(document.documentElement);
+	const primary = rootStyle.getPropertyValue("--primary").trim() || "#4f7cff";
+	const cardBg = rootStyle.getPropertyValue("--card-bg").trim() || "#ffffff";
+	const pageBg = rootStyle.getPropertyValue("--page-bg").trim() || "#f5f5f5";
+	const lineDivider = rootStyle.getPropertyValue("--line-divider").trim() || "rgba(0,0,0,0.12)";
+	const textColor = document.documentElement.classList.contains("dark")
+		? "rgba(255,255,255,0.88)"
+		: "rgba(0,0,0,0.78)";
+	const mutedText = document.documentElement.classList.contains("dark")
+		? "rgba(255,255,255,0.58)"
+		: "rgba(0,0,0,0.52)";
+
+	const mermaid = await loadMermaidModule();
+	mermaid.initialize({
+		startOnLoad: false,
+		securityLevel: "loose",
+		theme: "base",
+		fontFamily: "Roboto, system-ui, sans-serif",
+		flowchart: {
+			useMaxWidth: true,
+			htmlLabels: true,
+			curve: "basis",
+			nodeSpacing: 30,
+			rankSpacing: 42,
+			padding: 12,
+		},
+		themeVariables: {
+			background: "transparent",
+			primaryColor: cardBg,
+			primaryTextColor: textColor,
+			primaryBorderColor: primary,
+			secondaryColor: pageBg,
+			secondaryTextColor: textColor,
+			secondaryBorderColor: lineDivider,
+			tertiaryColor: cardBg,
+			tertiaryTextColor: textColor,
+			tertiaryBorderColor: lineDivider,
+			lineColor: primary,
+			textColor,
+			nodeTextColor: textColor,
+			mainBkg: cardBg,
+			clusterBkg: pageBg,
+			clusterBorder: lineDivider,
+			defaultLinkColor: primary,
+			titleColor: textColor,
+			edgeLabelBackground: cardBg,
+			labelBackground: cardBg,
+			edgeLabelTextColor: mutedText,
+			actorBorder: primary,
+			actorBkg: cardBg,
+			actorTextColor: textColor,
+			activationBorderColor: primary,
+			activationBkgColor: pageBg,
+			sequenceNumberColor: textColor,
+		},
+	});
+
+	for (const diagram of diagrams) {
+		const source = diagram.getAttribute("data-mermaid-source");
+		if (!source) continue;
+		diagram.removeAttribute("data-processed");
+		diagram.textContent = decodeURIComponent(source);
+	}
+
+	await mermaid.run({ nodes: diagrams });
+}
+
+function queueMermaidRender() {
+	window.clearTimeout(mermaidRenderTimer);
+	mermaidRenderTimer = window.setTimeout(() => {
+		renderMermaidDiagrams().catch((error) => {
+			console.error("Failed to render Mermaid diagrams:", error);
+		});
+	}, 0);
+}
+
+function initMermaidThemeObserver() {
+	if (mermaidThemeObserver) return;
+
+	mermaidThemeObserver = new MutationObserver(() => {
+		queueMermaidRender();
+	});
+
+	mermaidThemeObserver.observe(document.documentElement, {
+		attributes: true,
+		attributeFilter: ["class"],
+	});
+}
+
+queueMermaidRender();
+initMermaidThemeObserver();
+
+function setupMermaidWithSwup() {
+	if (!window.swup?.hooks) return;
+	window.swup.hooks.on("page:view", queueMermaidRender);
+}
+
+if (window.swup?.hooks) {
+	setupMermaidWithSwup();
+} else {
+	document.addEventListener("swup:enable", setupMermaidWithSwup);
+}
 </script>
 
 <script>
