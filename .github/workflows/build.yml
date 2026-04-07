@@ -12,6 +12,11 @@ concurrency:
 
 permissions:
   contents: read
+  discussions: read
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
   check:

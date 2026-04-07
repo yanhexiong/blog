@@ -11,8 +11,13 @@ on:
 # 允许 job 克隆 repo 并创建一个 page deployment
 permissions:
   contents: read
+  discussions: read
   pages: write
   id-token: write
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
   build:
