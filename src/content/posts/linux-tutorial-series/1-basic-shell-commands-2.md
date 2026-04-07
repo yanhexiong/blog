@@ -1,7 +1,7 @@
 ---
-title: 1.基础Shell指令-2
+title: 2.基础Shell指令（2）
 published: 2026-03-29
-description: Linux 教程系列《1.基础Shell指令-2》
+description: Linux 教程系列《基础Shell指令-2》
 hideFromLists: true
 tags: ["Linux", "教程", "Shell"]
 category: 教程

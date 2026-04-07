@@ -1,0 +1,76 @@
+---
+import { Icon } from "astro-icon/components";
+import { getSeriesAnswerBoardData } from "../../utils/series-answer-board";
+
+interface Props {
+	seriesSlug: string;
+}
+
+const { seriesSlug } = Astro.props;
+const board = await getSeriesAnswerBoardData(seriesSlug);
+
+const totalAnswers = board.users.reduce((total, user) => {
+	return total + user.answers.length;
+}, 0);
+
+const topUsers = [...board.users]
+	.sort(
+		(a, b) =>
+			b.answers.length - a.answers.length || a.login.localeCompare(b.login),
+	)
+	.slice(0, 4);
+
+const chapterProgress = board.posts.map((post) => ({
+	title: post.title,
+	count: board.users.filter((user) =>
+		user.answers.some((answer) => answer.postSlug === post.slug),
+	).length,
+}));
+---
+<div class="rounded-2xl border border-black/10 bg-black/[0.03] px-4 py-4 dark:border-white/10 dark:bg-white/[0.03]">
+    <div class="grid grid-cols-3 gap-2 mb-4">
+        <div class="rounded-xl bg-white/80 px-3 py-3 text-center dark:bg-black/20">
+            <div class="text-lg font-bold text-black/85 dark:text-white/85">{board.users.length}</div>
+            <div class="text-xs text-black/45 dark:text-white/45">作答人数</div>
+        </div>
+        <div class="rounded-xl bg-white/80 px-3 py-3 text-center dark:bg-black/20">
+            <div class="text-lg font-bold text-black/85 dark:text-white/85">{board.posts.length}</div>
+            <div class="text-xs text-black/45 dark:text-white/45">章节数</div>
+        </div>
+        <div class="rounded-xl bg-white/80 px-3 py-3 text-center dark:bg-black/20">
+            <div class="text-lg font-bold text-black/85 dark:text-white/85">{totalAnswers}</div>
+            <div class="text-xs text-black/45 dark:text-white/45">已记录作答</div>
+        </div>
+    </div>
+
+    {board.status === "ok" && topUsers.length > 0 && (
+        <>
+            <div class="mb-2 flex items-center gap-2 text-sm font-semibold text-black/70 dark:text-white/70">
+                <Icon name="material-symbols:group-rounded"></Icon>
+                最近/主要作答账号
+            </div>
+            <div class="mb-4 flex flex-wrap gap-2">
+                {topUsers.map((user) => (
+                    <span class="rounded-full bg-[var(--primary)]/12 px-3 py-1 text-sm font-medium text-[var(--primary)]">
+                        @{user.login} · {user.answers.length}/{board.posts.length}
+                    </span>
+                ))}
+            </div>
+
+            <div class="flex flex-col gap-2">
+                {chapterProgress.map((chapter) => (
+                    <div class="flex items-center justify-between gap-4 rounded-xl bg-white/80 px-3 py-2 text-sm dark:bg-black/20">
+                        <div class="truncate text-black/70 dark:text-white/70">{chapter.title}</div>
+                        <div class="shrink-0 font-medium text-black/45 dark:text-white/45">{chapter.count} 人</div>
+                    </div>
+                ))}
+            </div>
+        </>
+    )}
+
+    {board.status !== "ok" && (
+        <div class="text-sm leading-6 text-black/55 dark:text-white/55">
+            看板预览需要在带 GitHub token 的环境中读取评论数据。
+        </div>
+    )}
+</div>

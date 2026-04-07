@@ -86,7 +86,7 @@ export const commentConfig: CommentConfig = {
 	category: "Announcements",
 	categoryId: "DIC_kwDORsrG5c4C46ai",
 	mapping: "pathname",
-	strict: false,
+	strict: true,
 	reactionsEnabled: true,
 	emitMetadata: false,
 	inputPosition: "bottom",

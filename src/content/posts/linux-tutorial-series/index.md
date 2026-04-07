@@ -1,4 +1,4 @@
----
+﻿---
 title: Linux教程系列
 published: 2026-03-21
 description: Linux 教程合集，智泽实验室系列。
@@ -35,6 +35,7 @@ draft: false
 
 ## 章节目录
 
+- [0.Linux教程作答看板](/posts/linux-tutorial-series/0-answer-board/)
 - [1.基础Shell指令](/posts/linux-tutorial-series/1-basic-shell-commands/)
 - [1.基础Shell指令-2](/posts/linux-tutorial-series/1-basic-shell-commands-2/)
 - [3.Linux分区与硬盘查看](/posts/linux-tutorial-series/3-linux-disk-partitions/)
