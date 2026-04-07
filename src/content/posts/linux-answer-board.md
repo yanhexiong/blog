@@ -2,7 +2,7 @@
 title: Linux教程作答看板
 published: 2026-04-07
 description: 汇总 Linux 教程各章节评论区中按模板作答的同学和对应的 GitHub 账号。
-tags: ["Linux", "教程", "看板", "评论"]
+tags: ["Linux", "教程", "看板"]
 category: 教程
 draft: false
 ---
