@@ -15,25 +15,31 @@ type DiscussionCommentNode = {
 };
 
 type DiscussionNode = {
+	number: number;
 	title: string;
+	body: string;
 	url: string;
-	category: { id: string } | null;
-	comments: { nodes: DiscussionCommentNode[] };
 };
 
-type GitHubGraphQLResponse = {
-	data?: {
-		repository?: {
-			discussions: {
-				nodes: DiscussionNode[];
-				pageInfo: {
-					hasNextPage: boolean;
-					endCursor: string | null;
-				};
-			};
-		};
-	};
-	errors?: Array<{ message: string }>;
+type GitHubRestDiscussion = {
+	number: number;
+	title: string;
+	body: string | null;
+	html_url: string;
+	category: {
+		node_id: string;
+	} | null;
+};
+
+type GitHubRestDiscussionComment = {
+	user: {
+		login: string;
+		html_url: string;
+		avatar_url: string;
+	} | null;
+	body: string | null;
+	html_url: string;
+	created_at: string;
 };
 
 type TemplateSignature = {
@@ -53,6 +59,12 @@ type AnswerMatchDebug = {
 	labelMatches: number;
 	sectionMatches: number;
 	length: number;
+};
+
+type RepoInfo = {
+	owner: string;
+	name: string;
+	categoryId: string;
 };
 
 export type SeriesAnswerBoardPost = {
@@ -103,7 +115,13 @@ export type SeriesAnswerBoardData = {
 	};
 };
 
-const GITHUB_GRAPHQL_ENDPOINT = "https://api.github.com/graphql";
+const GITHUB_REST_ENDPOINT = "https://api.github.com";
+const GITHUB_USER_AGENT = "fuwari-series-answer-board";
+const CONTENT_PATH_REGEX = /(?:https?:\/\/[^/\s]+)?\/?posts\/[a-z0-9/_-]+\/?/gi;
+const LABEL_REGEX =
+	/(命令|回答|判断结果|输出解读|判断依据|步骤|作用|结果|内核版本|发行版信息|根目录内容|系统时间|实践题|思考题)\s*[:：]/g;
+const SECTION_REGEX = /(实践题|思考题|practice|discussion|answers?)/g;
+const PER_PAGE = 100;
 
 function normalizeCommentText(text: string): string {
 	return text
@@ -113,18 +131,30 @@ function normalizeCommentText(text: string): string {
 }
 
 function normalizePathname(pathname: string): string {
-	return pathname
+	if (!pathname) {
+		return "";
+	}
+
+	const normalized = pathname
 		.toLowerCase()
 		.replace(/^https?:\/\/[^/]+/, "")
 		.replace(/\/+$/, "");
+
+	return normalized.startsWith("/") ? normalized : `/${normalized}`;
+}
+
+function extractDiscussionPaths(title: string, body: string): string[] {
+	const matches = `${title}\n${body}`.match(CONTENT_PATH_REGEX) ?? [];
+	return [...new Set(matches.map((match) => normalizePathname(match)))];
 }
 
 function extractTemplateSignature(postBody: string): TemplateSignature {
 	const codeBlocks = [...postBody.matchAll(/```(?:\w+)?\n([\s\S]*?)```/g)];
 	const template = codeBlocks.at(-1)?.[1] ?? "";
 	const headingCount = (template.match(/(?:^|\n)\s*##+\s+/g) || []).length;
-	const numberedCount = (template.match(/(?:^|\n)\s*\d+[.)、．]/g) || [])
-		.length;
+	const numberedCount = (
+		template.match(/(?:^|\n)\s*\d+\s*[.)、．。）]\s*/g) || []
+	).length;
 	const bulletCount = (template.match(/(?:^|\n)\s*-\s+/g) || []).length;
 
 	return {
@@ -156,18 +186,13 @@ function evaluateAnswerTemplate(
 
 	let score = 0;
 	const headingMatches = (normalized.match(/(?:^|\n)\s*##+\s+/g) || []).length;
-	const numberedMatches = (normalized.match(/(?:^|\n)\s*\d+[.)、．]/g) || [])
-		.length;
+	const numberedMatches = (
+		normalized.match(/(?:^|\n)\s*\d+\s*[.)、．。）]\s*/g) || []
+	).length;
 	const bulletMatches = (normalized.match(/(?:^|\n)\s*-\s+/g) || []).length;
 	const fencedBlockMatches = (normalized.match(/```/g) || []).length;
-	const labelMatches = (
-		normalized.match(
-			/(命令|回答|判断结果|输出解读|判断依据|步骤|作用|结果|内核版本|发行版信息|根目录内容|系统时间|实践题|思考题)\s*[:：]/g,
-		) || []
-	).length;
-	const sectionMatches = (
-		normalized.match(/(实践题|思考题|practice|discussion|answers?)/g) || []
-	).length;
+	const labelMatches = (normalized.match(LABEL_REGEX) || []).length;
+	const sectionMatches = (normalized.match(SECTION_REGEX) || []).length;
 
 	if (headingMatches >= signature.headingThreshold) score += 2;
 	if (numberedMatches >= signature.numberedThreshold) score += 2;
@@ -198,7 +223,7 @@ function evaluateAnswerTemplate(
 	};
 }
 
-function getCommentRepoInfo() {
+function getCommentRepoInfo(): RepoInfo | null {
 	const [owner, name] = commentConfig.repo.split("/");
 	if (!owner || !name || !commentConfig.categoryId.trim()) {
 		return null;
@@ -211,204 +236,349 @@ function getCommentRepoInfo() {
 	};
 }
 
-async function fetchGitHubGraphQL(
-	query: string,
-	variables: Record<string, unknown>,
-	token: string,
-): Promise<GitHubGraphQLResponse> {
-	const response = await fetch(GITHUB_GRAPHQL_ENDPOINT, {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			Authorization: `Bearer ${token}`,
-		},
-		body: JSON.stringify({ query, variables }),
-	});
+function getGitHubHeaders(token?: string): Record<string, string> {
+	const headers: Record<string, string> = {
+		Accept: "application/vnd.github+json",
+		"X-GitHub-Api-Version": "2022-11-28",
+		"User-Agent": GITHUB_USER_AGENT,
+	};
 
-	return (await response.json()) as GitHubGraphQLResponse;
+	if (token) {
+		headers.Authorization = `Bearer ${token}`;
+	}
+
+	return headers;
 }
 
-async function fetchDiscussions(
-	token: string,
-): Promise<{ discussions: DiscussionNode[]; errorMessage?: string }> {
-	const repoInfo = getCommentRepoInfo();
-	if (!repoInfo) {
-		return { discussions: [], errorMessage: "comments repo is not configured" };
-	}
-
-	const discussions: DiscussionNode[] = [];
-	let cursor: string | null = null;
-
-	const query = `
-		query SeriesAnswerBoard($owner: String!, $name: String!, $after: String) {
-			repository(owner: $owner, name: $name) {
-				discussions(first: 50, after: $after, orderBy: { field: UPDATED_AT, direction: DESC }) {
-					nodes {
-						title
-						url
-						category {
-							id
-						}
-						comments(first: 100) {
-							nodes {
-								author {
-									login
-									url
-									avatarUrl
-								}
-								bodyText
-								url
-								createdAt
-							}
-						}
-					}
-					pageInfo {
-						hasNextPage
-						endCursor
-					}
-				}
-			}
-		}
-	`;
-
+async function fetchGitHubJson<T>(
+	path: string,
+	token?: string,
+): Promise<{ data?: T; errorMessage?: string; status?: number }> {
 	try {
-		while (true) {
-			const result = await fetchGitHubGraphQL(
-				query,
-				{
-					owner: repoInfo.owner,
-					name: repoInfo.name,
-					after: cursor,
-				},
-				token,
-			);
+		const response = await fetch(`${GITHUB_REST_ENDPOINT}${path}`, {
+			method: "GET",
+			headers: getGitHubHeaders(token),
+		});
 
-			if (result.errors?.length) {
-				return {
-					discussions: [],
-					errorMessage: result.errors.map((error) => error.message).join("; "),
-				};
+		if (!response.ok) {
+			let errorMessage = `GitHub API ${response.status}`;
+			try {
+				const errorData = (await response.json()) as { message?: string };
+				if (errorData.message) {
+					errorMessage = errorData.message;
+				}
+			} catch {
+				// ignore parse errors
 			}
-
-			const page = result.data?.repository?.discussions;
-			if (!page) {
-				return {
-					discussions: [],
-					errorMessage: "repository discussions response is empty",
-				};
-			}
-
-			discussions.push(
-				...page.nodes.filter(
-					(discussion) => discussion.category?.id === repoInfo.categoryId,
-				),
-			);
-
-			if (!page.pageInfo.hasNextPage) {
-				break;
-			}
-
-			cursor = page.pageInfo.endCursor;
+			return {
+				errorMessage,
+				status: response.status,
+			};
 		}
+
+		const data = (await response.json()) as T;
+		return { data, status: response.status };
 	} catch (error) {
 		return {
-			discussions: [],
 			errorMessage:
-				error instanceof Error ? error.message : "failed to fetch discussions",
+				error instanceof Error ? error.message : "failed to fetch GitHub API",
 		};
 	}
+}
+
+async function fetchPaginatedGitHubJson<T>(
+	path: string,
+	token?: string,
+	perPage = PER_PAGE,
+): Promise<{ items: T[]; errorMessage?: string; errorStatus?: number }> {
+	const items: T[] = [];
+
+	for (let page = 1; ; page++) {
+		const separator = path.includes("?") ? "&" : "?";
+		const pagePath = `${path}${separator}per_page=${perPage}&page=${page}`;
+		const result = await fetchGitHubJson<T[]>(pagePath, token);
+
+		if (!result.data) {
+			return {
+				items: [],
+				errorMessage: result.errorMessage,
+				errorStatus: result.status,
+			};
+		}
+
+		items.push(...result.data);
+		if (result.data.length < perPage) {
+			break;
+		}
+	}
+
+	return { items };
+}
+
+async function fetchCategoryDiscussions(
+	repoInfo: RepoInfo,
+	token?: string,
+): Promise<{
+	discussions: DiscussionNode[];
+	errorMessage?: string;
+	errorStatus?: number;
+}> {
+	const result = await fetchPaginatedGitHubJson<GitHubRestDiscussion>(
+		`/repos/${repoInfo.owner}/${repoInfo.name}/discussions`,
+		token,
+	);
+
+	if (result.errorMessage) {
+		return {
+			discussions: [],
+			errorMessage: result.errorMessage,
+			errorStatus: result.errorStatus,
+		};
+	}
+
+	const discussions = result.items
+		.filter(
+			(discussion) => discussion.category?.node_id === repoInfo.categoryId,
+		)
+		.map((discussion) => ({
+			number: discussion.number,
+			title: discussion.title,
+			body: discussion.body ?? "",
+			url: discussion.html_url,
+		}));
 
 	return { discussions };
 }
 
-export async function getSeriesAnswerBoardData(
-	seriesSlug: string,
-): Promise<SeriesAnswerBoardData> {
-	const allPosts = await getCollection("posts", ({ slug }) => {
-		return slug.startsWith(`${seriesSlug}/`);
-	});
+async function fetchDiscussionComments(
+	repoInfo: RepoInfo,
+	discussionNumber: number,
+	token?: string,
+): Promise<{
+	comments: DiscussionCommentNode[];
+	errorMessage?: string;
+	errorStatus?: number;
+}> {
+	const result = await fetchPaginatedGitHubJson<GitHubRestDiscussionComment>(
+		`/repos/${repoInfo.owner}/${repoInfo.name}/discussions/${discussionNumber}/comments`,
+		token,
+	);
 
-	const posts = allPosts
-		.map((post) => ({
-			slug: post.slug,
-			title: post.data.title,
-			pathname: `/posts/${post.slug}/`,
-			signature: extractTemplateSignature(post.body),
-		}))
-		.sort((a, b) => a.slug.localeCompare(b.slug));
-
-	const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
-	if (!token) {
+	if (result.errorMessage) {
 		return {
-			posts: posts.map(({ signature: _signature, ...post }) => post),
-			users: [],
+			comments: [],
+			errorMessage: result.errorMessage,
+			errorStatus: result.errorStatus,
+		};
+	}
+
+	const comments = result.items.map((comment) => ({
+		author: comment.user
+			? {
+					login: comment.user.login,
+					url: comment.user.html_url,
+					avatarUrl: comment.user.avatar_url,
+				}
+			: null,
+		bodyText: comment.body ?? "",
+		url: comment.html_url,
+		createdAt: comment.created_at,
+	}));
+
+	return { comments };
+}
+
+function classifyErrorStatus(
+	tokenPresent: boolean,
+	errorMessage?: string,
+	errorStatus?: number,
+): { status: SeriesAnswerBoardData["status"]; errorMessage?: string } {
+	const normalized = (errorMessage ?? "").toLowerCase();
+	const isRateLimited =
+		errorStatus === 403 ||
+		normalized.includes("rate limit") ||
+		normalized.includes("api rate limit exceeded");
+	const isUnauthorized =
+		errorStatus === 401 || normalized.includes("bad credentials");
+
+	if (!tokenPresent && (isRateLimited || isUnauthorized)) {
+		return {
 			status: "missing-token",
-			debug: {
-				tokenPresent: false,
-				discussionsMatched: 0,
-				postMatches: [],
-			},
+			errorMessage:
+				errorMessage ??
+				"anonymous GitHub API requests are rate-limited; provide GITHUB_TOKEN for stable board updates",
 		};
 	}
 
-	if (!getCommentRepoInfo()) {
+	return {
+		status: "error",
+		errorMessage,
+	};
+}
+
+function buildStatusResult({
+	status,
+	posts,
+	tokenPresent,
+	users = [],
+	discussionsMatched = 0,
+	postMatches = [],
+	errorMessage,
+}: {
+	status: SeriesAnswerBoardData["status"];
+	posts: SeriesAnswerBoardPost[];
+	tokenPresent: boolean;
+	users?: SeriesAnswerBoardUser[];
+	discussionsMatched?: number;
+	postMatches?: SeriesAnswerBoardData["debug"]["postMatches"];
+	errorMessage?: string;
+}): SeriesAnswerBoardData {
+	return {
+		posts,
+		users,
+		status,
+		errorMessage,
+		debug: {
+			tokenPresent,
+			discussionsMatched,
+			postMatches,
+		},
+	};
+}
+
+function matchDiscussionForPost(
+	postPathname: string,
+	discussions: Array<{ discussion: DiscussionNode; paths: string[] }>,
+): DiscussionNode | undefined {
+	const normalizedPostPath = normalizePathname(postPathname);
+	return discussions.find((item) => item.paths.includes(normalizedPostPath))
+		?.discussion;
+}
+
+function upsertUserAnswer(
+	userMap: Map<string, SeriesAnswerBoardUser>,
+	postSlug: string,
+	comment: DiscussionCommentNode,
+): void {
+	if (!comment.author?.login) {
+		return;
+	}
+
+	const existingUser = userMap.get(comment.author.login) ?? {
+		login: comment.author.login,
+		url: comment.author.url,
+		avatarUrl: comment.author.avatarUrl,
+		answers: [],
+	};
+
+	const nextAnswer: SeriesAnswerBoardAnswer = {
+		postSlug,
+		commentUrl: comment.url,
+		createdAt: comment.createdAt,
+	};
+
+	const existingAnswerIndex = existingUser.answers.findIndex(
+		(answer) => answer.postSlug === postSlug,
+	);
+
+	if (existingAnswerIndex >= 0) {
+		const current = existingUser.answers[existingAnswerIndex];
+		if (new Date(nextAnswer.createdAt) > new Date(current.createdAt)) {
+			existingUser.answers[existingAnswerIndex] = nextAnswer;
+		}
+	} else {
+		existingUser.answers.push(nextAnswer);
+	}
+
+	userMap.set(comment.author.login, existingUser);
+}
+
+async function buildBoardData({
+	repoInfo,
+	posts,
+	token,
+}: {
+	repoInfo: RepoInfo;
+	posts: Array<
+		SeriesAnswerBoardPost & {
+			signature: TemplateSignature;
+		}
+	>;
+	token?: string;
+}): Promise<{
+	users: SeriesAnswerBoardUser[];
+	discussionsMatched: number;
+	postMatches: SeriesAnswerBoardData["debug"]["postMatches"];
+	errorMessage?: string;
+	errorStatus?: number;
+}> {
+	const discussionResult = await fetchCategoryDiscussions(repoInfo, token);
+	if (discussionResult.errorMessage) {
 		return {
-			posts: posts.map(({ signature: _signature, ...post }) => post),
 			users: [],
-			status: "not-configured",
-			debug: {
-				tokenPresent: true,
-				discussionsMatched: 0,
-				postMatches: [],
-			},
+			discussionsMatched: 0,
+			postMatches: [],
+			errorMessage: discussionResult.errorMessage,
+			errorStatus: discussionResult.errorStatus,
 		};
 	}
 
-	const { discussions, errorMessage } = await fetchDiscussions(token);
-	if (errorMessage) {
-		return {
-			posts: posts.map(({ signature: _signature, ...post }) => post),
-			users: [],
-			status: "error",
-			errorMessage,
-			debug: {
-				tokenPresent: true,
+	const discussionsWithPaths = discussionResult.discussions.map(
+		(discussion) => ({
+			discussion,
+			paths: extractDiscussionPaths(discussion.title, discussion.body),
+		}),
+	);
+
+	const relatedDiscussions = posts.map((post) => ({
+		post,
+		discussion: matchDiscussionForPost(post.pathname, discussionsWithPaths),
+	}));
+
+	const commentsByDiscussion = new Map<number, DiscussionCommentNode[]>();
+	for (const item of relatedDiscussions) {
+		if (!item.discussion || commentsByDiscussion.has(item.discussion.number)) {
+			continue;
+		}
+
+		const commentsResult = await fetchDiscussionComments(
+			repoInfo,
+			item.discussion.number,
+			token,
+		);
+
+		if (commentsResult.errorMessage) {
+			return {
+				users: [],
 				discussionsMatched: 0,
 				postMatches: [],
-			},
-		};
+				errorMessage: commentsResult.errorMessage,
+				errorStatus: commentsResult.errorStatus,
+			};
+		}
+
+		commentsByDiscussion.set(item.discussion.number, commentsResult.comments);
 	}
 
 	const userMap = new Map<string, SeriesAnswerBoardUser>();
 	const postMatches: SeriesAnswerBoardData["debug"]["postMatches"] = [];
 	let discussionsMatched = 0;
 
-	for (const post of posts) {
-		const normalizedPostPath = normalizePathname(post.pathname);
-		const relatedDiscussion = discussions.find((discussion) => {
-			const normalizedTitle = normalizePathname(discussion.title);
-			return (
-				normalizedTitle.includes(normalizedPostPath) ||
-				normalizedPostPath.includes(normalizedTitle)
-			);
-		});
+	for (const item of relatedDiscussions) {
+		const { post, discussion } = item;
+		const comments = discussion
+			? (commentsByDiscussion.get(discussion.number) ?? [])
+			: [];
 
-		if (!relatedDiscussion) {
-			postMatches.push({
-				postSlug: post.slug,
-				commentCount: 0,
-				matchedCommentCount: 0,
-				commentPreviews: [],
-			});
-			continue;
+		if (discussion) {
+			discussionsMatched++;
 		}
 
-		discussionsMatched++;
 		let matchedCommentCount = 0;
 		const commentPreviews: SeriesAnswerBoardData["debug"]["postMatches"][number]["commentPreviews"] =
 			[];
 
-		for (const comment of relatedDiscussion.comments.nodes) {
+		for (const comment of comments) {
 			if (!comment.author?.login) {
 				continue;
 			}
@@ -432,37 +602,13 @@ export async function getSeriesAnswerBoardData(
 			}
 
 			matchedCommentCount++;
-
-			const existingUser = userMap.get(comment.author.login) ?? {
-				login: comment.author.login,
-				url: comment.author.url,
-				avatarUrl: comment.author.avatarUrl,
-				answers: [],
-			};
-
-			const existingAnswerIndex = existingUser.answers.findIndex(
-				(answer) => answer.postSlug === post.slug,
-			);
-
-			const nextAnswer = {
-				postSlug: post.slug,
-				commentUrl: comment.url,
-				createdAt: comment.createdAt,
-			};
-
-			if (existingAnswerIndex >= 0) {
-				existingUser.answers[existingAnswerIndex] = nextAnswer;
-			} else {
-				existingUser.answers.push(nextAnswer);
-			}
-
-			userMap.set(comment.author.login, existingUser);
+			upsertUserAnswer(userMap, post.slug, comment);
 		}
 
 		postMatches.push({
 			postSlug: post.slug,
-			discussionTitle: relatedDiscussion.title,
-			commentCount: relatedDiscussion.comments.nodes.length,
+			discussionTitle: discussion?.title,
+			commentCount: comments.length,
 			matchedCommentCount,
 			commentPreviews,
 		});
@@ -472,18 +618,72 @@ export async function getSeriesAnswerBoardData(
 		if (b.answers.length !== a.answers.length) {
 			return b.answers.length - a.answers.length;
 		}
-
 		return a.login.localeCompare(b.login);
 	});
 
 	return {
-		posts: posts.map(({ signature: _signature, ...post }) => post),
 		users,
-		status: "ok",
-		debug: {
-			tokenPresent: true,
-			discussionsMatched,
-			postMatches,
-		},
+		discussionsMatched,
+		postMatches,
 	};
+}
+
+export async function getSeriesAnswerBoardData(
+	seriesSlug: string,
+): Promise<SeriesAnswerBoardData> {
+	const allPosts = await getCollection("posts", ({ slug }) => {
+		return slug.startsWith(`${seriesSlug}/`);
+	});
+
+	const posts = allPosts
+		.map((post) => ({
+			slug: post.slug,
+			title: post.data.title,
+			pathname: `/posts/${post.slug}/`,
+			signature: extractTemplateSignature(post.body),
+		}))
+		.sort((a, b) => a.slug.localeCompare(b.slug));
+
+	const publicPosts = posts.map(({ signature: _signature, ...post }) => post);
+	const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+	const tokenPresent = Boolean(token);
+	const repoInfo = getCommentRepoInfo();
+
+	if (!repoInfo) {
+		return buildStatusResult({
+			status: "not-configured",
+			posts: publicPosts,
+			tokenPresent,
+		});
+	}
+
+	const boardResult = await buildBoardData({
+		repoInfo,
+		posts,
+		token,
+	});
+
+	if (boardResult.errorMessage) {
+		const classified = classifyErrorStatus(
+			tokenPresent,
+			boardResult.errorMessage,
+			boardResult.errorStatus,
+		);
+
+		return buildStatusResult({
+			status: classified.status,
+			posts: publicPosts,
+			tokenPresent,
+			errorMessage: classified.errorMessage,
+		});
+	}
+
+	return buildStatusResult({
+		status: "ok",
+		posts: publicPosts,
+		tokenPresent,
+		users: boardResult.users,
+		discussionsMatched: boardResult.discussionsMatched,
+		postMatches: boardResult.postMatches,
+	});
 }

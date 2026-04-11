@@ -1,76 +1,249 @@
 ---
-import { Icon } from "astro-icon/components";
-import { getSeriesAnswerBoardData } from "../../utils/series-answer-board";
-
 interface Props {
 	seriesSlug: string;
+	apiBase?: string;
 }
 
 const { seriesSlug } = Astro.props;
-const board = await getSeriesAnswerBoardData(seriesSlug);
-
-const totalAnswers = board.users.reduce((total, user) => {
-	return total + user.answers.length;
-}, 0);
-
-const topUsers = [...board.users]
-	.sort(
-		(a, b) =>
-			b.answers.length - a.answers.length || a.login.localeCompare(b.login),
-	)
-	.slice(0, 4);
-
-const chapterProgress = board.posts.map((post) => ({
-	title: post.title,
-	count: board.users.filter((user) =>
-		user.answers.some((answer) => answer.postSlug === post.slug),
-	).length,
-}));
+const apiBase = Astro.props.apiBase ?? "https://worker.727613.xyz";
 ---
-<div class="rounded-2xl border border-black/10 bg-black/[0.03] px-4 py-4 dark:border-white/10 dark:bg-white/[0.03]">
-    <div class="grid grid-cols-3 gap-2 mb-4">
-        <div class="rounded-xl bg-white/80 px-3 py-3 text-center dark:bg-black/20">
-            <div class="text-lg font-bold text-black/85 dark:text-white/85">{board.users.length}</div>
-            <div class="text-xs text-black/45 dark:text-white/45">作答人数</div>
-        </div>
-        <div class="rounded-xl bg-white/80 px-3 py-3 text-center dark:bg-black/20">
-            <div class="text-lg font-bold text-black/85 dark:text-white/85">{board.posts.length}</div>
-            <div class="text-xs text-black/45 dark:text-white/45">章节数</div>
-        </div>
-        <div class="rounded-xl bg-white/80 px-3 py-3 text-center dark:bg-black/20">
-            <div class="text-lg font-bold text-black/85 dark:text-white/85">{totalAnswers}</div>
-            <div class="text-xs text-black/45 dark:text-white/45">已记录作答</div>
-        </div>
-    </div>
+<div
+	class="rounded-2xl border border-black/10 bg-black/[0.03] px-4 py-4 dark:border-white/10 dark:bg-white/[0.03]"
+	data-board-preview
+	data-series-slug={seriesSlug}
+	data-api-base={apiBase}
+>
+	<div class="mb-4 grid grid-cols-3 gap-2">
+		<div class="rounded-xl bg-white/80 px-3 py-3 text-center dark:bg-black/20">
+			<div
+				class="text-lg font-bold text-black/85 dark:text-white/85"
+				data-preview-users
+			>
+				-
+			</div>
+			<div class="text-xs text-black/45 dark:text-white/45">作答人数</div>
+		</div>
+		<div class="rounded-xl bg-white/80 px-3 py-3 text-center dark:bg-black/20">
+			<div
+				class="text-lg font-bold text-black/85 dark:text-white/85"
+				data-preview-chapters
+			>
+				-
+			</div>
+			<div class="text-xs text-black/45 dark:text-white/45">章节数</div>
+		</div>
+		<div class="rounded-xl bg-white/80 px-3 py-3 text-center dark:bg-black/20">
+			<div
+				class="text-lg font-bold text-black/85 dark:text-white/85"
+				data-preview-answers
+			>
+				-
+			</div>
+			<div class="text-xs text-black/45 dark:text-white/45">已记录作答</div>
+		</div>
+	</div>
 
-    {board.status === "ok" && topUsers.length > 0 && (
-        <>
-            <div class="mb-2 flex items-center gap-2 text-sm font-semibold text-black/70 dark:text-white/70">
-                <Icon name="material-symbols:group-rounded"></Icon>
-                最近/主要作答账号
-            </div>
-            <div class="mb-4 flex flex-wrap gap-2">
-                {topUsers.map((user) => (
-                    <span class="rounded-full bg-[var(--primary)]/12 px-3 py-1 text-sm font-medium text-[var(--primary)]">
-                        @{user.login} · {user.answers.length}/{board.posts.length}
-                    </span>
-                ))}
-            </div>
+	<div data-preview-status class="text-sm leading-6 text-black/55 dark:text-white/55">
+		正在加载看板预览...
+	</div>
 
-            <div class="flex flex-col gap-2">
-                {chapterProgress.map((chapter) => (
-                    <div class="flex items-center justify-between gap-4 rounded-xl bg-white/80 px-3 py-2 text-sm dark:bg-black/20">
-                        <div class="truncate text-black/70 dark:text-white/70">{chapter.title}</div>
-                        <div class="shrink-0 font-medium text-black/45 dark:text-white/45">{chapter.count} 人</div>
-                    </div>
-                ))}
-            </div>
-        </>
-    )}
+	<div class="hidden" data-preview-top-wrap>
+		<div class="mb-2 flex items-center gap-2 text-sm font-semibold text-black/70 dark:text-white/70">
+			主要作答账号
+		</div>
+		<div class="mb-4 flex flex-wrap gap-2" data-preview-top-users></div>
+	</div>
 
-    {board.status !== "ok" && (
-        <div class="text-sm leading-6 text-black/55 dark:text-white/55">
-            看板预览需要在带 GitHub token 的环境中读取评论数据。
-        </div>
-    )}
+	<div class="hidden flex-col gap-2" data-preview-progress></div>
 </div>
+
+<script is:inline>
+	(() => {
+		const script = document.currentScript;
+		const root = script?.previousElementSibling;
+		if (!(root instanceof HTMLElement)) {
+			return;
+		}
+
+		const seriesSlug = root.dataset.seriesSlug || "linux-tutorial-series";
+		const apiBase = root.dataset.apiBase || "https://worker.727613.xyz";
+
+		const usersEl = root.querySelector("[data-preview-users]");
+		const chaptersEl = root.querySelector("[data-preview-chapters]");
+		const answersEl = root.querySelector("[data-preview-answers]");
+		const statusEl = root.querySelector("[data-preview-status]");
+		const topWrapEl = root.querySelector("[data-preview-top-wrap]");
+		const topUsersEl = root.querySelector("[data-preview-top-users]");
+		const progressEl = root.querySelector("[data-preview-progress]");
+
+		if (
+			!(usersEl instanceof HTMLElement) ||
+			!(chaptersEl instanceof HTMLElement) ||
+			!(answersEl instanceof HTMLElement) ||
+			!(statusEl instanceof HTMLElement) ||
+			!(topWrapEl instanceof HTMLElement) ||
+			!(topUsersEl instanceof HTMLElement) ||
+			!(progressEl instanceof HTMLElement)
+		) {
+			return;
+		}
+
+		const escapeHtml = (value) => {
+			return String(value ?? "")
+				.replaceAll("&", "&amp;")
+				.replaceAll("<", "&lt;")
+				.replaceAll(">", "&gt;")
+				.replaceAll('"', "&quot;")
+				.replaceAll("'", "&#39;");
+		};
+
+		const setCounts = (users, posts, answers) => {
+			usersEl.textContent = String(users);
+			chaptersEl.textContent = String(posts);
+			answersEl.textContent = String(answers);
+		};
+
+		const renderStatus = (message) => {
+			statusEl.textContent = message;
+			topWrapEl.classList.add("hidden");
+			progressEl.classList.add("hidden");
+			setCounts(0, 0, 0);
+		};
+
+		const renderPreview = (board) => {
+			const posts = Array.isArray(board.posts) ? board.posts : [];
+			const users = Array.isArray(board.users) ? board.users : [];
+			const totalAnswers = users.reduce((sum, user) => {
+				return sum + (Array.isArray(user.answers) ? user.answers.length : 0);
+			}, 0);
+
+			setCounts(users.length, posts.length, totalAnswers);
+
+			const topUsers = [...users]
+				.sort((a, b) => {
+					const aCount = Array.isArray(a.answers) ? a.answers.length : 0;
+					const bCount = Array.isArray(b.answers) ? b.answers.length : 0;
+					if (bCount !== aCount) {
+						return bCount - aCount;
+					}
+					return String(a.login).localeCompare(String(b.login));
+				})
+				.slice(0, 4);
+
+			if (topUsers.length === 0) {
+				statusEl.textContent = "暂无识别到的模板作答。";
+				topWrapEl.classList.add("hidden");
+				progressEl.classList.add("hidden");
+				return;
+			}
+
+			topUsersEl.innerHTML = topUsers
+				.map((user) => {
+					const done = Array.isArray(user.answers) ? user.answers.length : 0;
+					return `<span class="rounded-full bg-[var(--primary)]/12 px-3 py-1 text-sm font-medium text-[var(--primary)]">
+						@${escapeHtml(user.login)} · ${done}/${posts.length}
+					</span>`;
+				})
+				.join("");
+
+			const progressItems = posts.map((post) => {
+				const count = users.filter((user) => {
+					return Array.isArray(user.answers)
+						? user.answers.some((answer) => answer.postSlug === post.slug)
+						: false;
+				}).length;
+
+				return {
+					title: post.title,
+					count,
+				};
+			});
+
+			progressEl.innerHTML = progressItems
+				.map((item) => {
+					return `<div class="flex items-center justify-between gap-4 rounded-xl bg-white/80 px-3 py-2 text-sm dark:bg-black/20">
+						<div class="truncate text-black/70 dark:text-white/70">${escapeHtml(item.title)}</div>
+						<div class="shrink-0 font-medium text-black/45 dark:text-white/45">${item.count} 人</div>
+					</div>`;
+				})
+				.join("");
+
+			statusEl.textContent = "看板数据已更新";
+			topWrapEl.classList.remove("hidden");
+			progressEl.classList.remove("hidden");
+		};
+
+		const fetchBoard = async (url) => {
+			const controller = new AbortController();
+			const timeout = setTimeout(() => controller.abort(), 8000);
+			try {
+				const response = await fetch(url, {
+					method: "GET",
+					cache: "no-store",
+					signal: controller.signal,
+				});
+				if (!response.ok) {
+					throw new Error(`HTTP ${response.status}`);
+				}
+				return await response.json();
+			} finally {
+				clearTimeout(timeout);
+			}
+		};
+
+		const buildCandidateUrls = () => {
+			const remoteUrl = `${apiBase.replace(/\/+$/, "")}/api/board?series=${encodeURIComponent(seriesSlug)}`;
+			const localUrl = `${window.location.origin}/api/board/?series=${encodeURIComponent(seriesSlug)}`;
+			const isLocalhost =
+				window.location.hostname === "localhost" ||
+				window.location.hostname === "127.0.0.1";
+
+			if (isLocalhost) {
+				return [remoteUrl, localUrl];
+			}
+
+			return [remoteUrl];
+		};
+
+		const load = async () => {
+			renderStatus("正在加载看板预览...");
+			let lastError = null;
+			try {
+				let board = null;
+				for (const candidateUrl of buildCandidateUrls()) {
+					try {
+						board = await fetchBoard(candidateUrl);
+						break;
+					} catch (error) {
+						lastError = error;
+					}
+				}
+
+				if (!board) {
+					throw lastError || new Error("no board endpoint available");
+				}
+
+				if (board.status !== "ok") {
+					if (board.status === "missing-token") {
+						renderStatus("看板服务缺少 GH_TOKEN。");
+						return;
+					}
+					if (board.status === "not-configured") {
+						renderStatus("看板服务配置不完整。");
+						return;
+					}
+					renderStatus(board.errorMessage || "看板服务返回错误。");
+					return;
+				}
+
+				renderPreview(board);
+			} catch (error) {
+				const message =
+					error instanceof Error ? error.message : "unknown error";
+				renderStatus(`加载失败：${message}`);
+			}
+		};
+
+		load();
+	})();
+</script>

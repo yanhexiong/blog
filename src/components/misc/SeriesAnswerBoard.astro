@@ -1,163 +1,235 @@
 ---
-import { Icon } from "astro-icon/components";
-import { getSeriesAnswerBoardData } from "../../utils/series-answer-board";
-
 interface Props {
 	seriesSlug: string;
 	class?: string;
+	apiBase?: string;
 }
 
 const { seriesSlug } = Astro.props;
 const className = Astro.props.class ?? "";
-const board = await getSeriesAnswerBoardData(seriesSlug);
-
-function getAnswer(userLogin: string, postSlug: string) {
-	return board.users
-		.find((user) => user.login === userLogin)
-		?.answers.find((answer) => answer.postSlug === postSlug);
-}
+const apiBase = Astro.props.apiBase ?? "https://worker.727613.xyz";
 ---
-<section class={`card-base px-6 py-5 ${className}`}>
-    <div class="flex items-start justify-between gap-4 mb-4">
-        <div>
-            <div class="flex items-center gap-2 text-lg font-bold text-black/85 dark:text-white/85">
-                <Icon name="material-symbols:checklist-rounded"></Icon>
-                Linux 教程作答看板
-            </div>
-            <p class="mt-2 text-sm leading-6 text-black/55 dark:text-white/55">
-                自动聚合各章节评论区中按模板作答的评论，并记录对应的 GitHub 账号。
-            </p>
-        </div>
-        <div class="rounded-full bg-black/[0.04] px-3 py-1 text-sm font-medium text-black/50 dark:bg-white/[0.06] dark:text-white/50">
-            {board.users.length} 人
-        </div>
-    </div>
+<section
+	class={`card-base px-6 py-5 ${className}`}
+	data-series-board
+	data-series-slug={seriesSlug}
+	data-api-base={apiBase}
+>
+	<div class="mb-4 flex items-start justify-between gap-4">
+		<div>
+			<div class="text-lg font-bold text-black/85 dark:text-white/85">
+				Linux 教程作答看板
+			</div>
+			<p class="mt-2 text-sm leading-6 text-black/55 dark:text-white/55">
+				按访问时实时拉取 GitHub 评论，统计每章作答情况。
+			</p>
+		</div>
+		<div
+			class="rounded-full bg-black/[0.04] px-3 py-1 text-sm font-medium text-black/50 dark:bg-white/[0.06] dark:text-white/50"
+		>
+			<span data-board-user-count>-</span> 人
+		</div>
+	</div>
 
-    <details class="mb-4 rounded-2xl border border-dashed border-[var(--line-divider)] px-4 py-3 text-sm text-black/55 dark:text-white/55">
-        <summary class="cursor-pointer font-medium list-none">调试信息</summary>
-        <div class="mt-3 flex flex-col gap-2">
-            <div>token: {board.debug.tokenPresent ? "present" : "missing"}</div>
-            <div>matched discussions: {board.debug.discussionsMatched}</div>
-            {board.debug.postMatches.map((item) => (
-                <div class="rounded-xl bg-black/[0.03] px-3 py-2 dark:bg-white/[0.04]">
-                    <div class="font-mono text-xs">{item.postSlug}</div>
-                    <div>comments: {item.commentCount}, matched: {item.matchedCommentCount}</div>
-                    {item.discussionTitle && <div class="text-xs break-all">{item.discussionTitle}</div>}
-                    {item.commentPreviews.length > 0 && (
-                        <div class="mt-2 flex flex-col gap-2">
-                            {item.commentPreviews.slice(0, 3).map((comment) => (
-                                <div class="rounded-lg bg-white/70 px-2 py-2 text-xs dark:bg-black/20">
-                                    <div class="font-medium">
-                                        @{comment.authorLogin} · matched: {comment.matched ? "yes" : "no"} · score: {comment.score}
-                                    </div>
-                                    <div>
-                                        headings: {comment.headingMatches}, numbered: {comment.numberedMatches}, bullets: {comment.bulletMatches}, labels: {comment.labelMatches}, sections: {comment.sectionMatches}, length: {comment.length}
-                                    </div>
-                                    <div class="mt-1 break-words text-black/60 dark:text-white/60">
-                                        {comment.preview}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            ))}
-        </div>
-    </details>
+	<div
+		data-board-status
+		class="rounded-2xl border border-dashed border-[var(--line-divider)] px-4 py-4 text-sm leading-6 text-black/55 dark:text-white/55"
+	>
+		正在加载最新作答数据...
+	</div>
 
-    {board.status === "ok" && board.users.length > 0 && (
-        <div class="overflow-x-auto">
-            <table class="w-full min-w-[44rem] border-separate border-spacing-y-2">
-                <thead>
-                    <tr class="text-left text-sm text-black/45 dark:text-white/45">
-                        <th class="pb-2 pr-3 font-medium">GitHub</th>
-                        {board.posts.map((post) => (
-                            <th class="pb-2 px-2 font-medium">{post.title}</th>
-                        ))}
-                    </tr>
-                </thead>
-                <tbody>
-                    {board.users.map((user) => (
-                        <tr class="align-middle">
-                            <td class="rounded-l-2xl bg-black/[0.03] px-3 py-3 dark:bg-white/[0.04]">
-                                <a
-                                    href={user.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    class="flex items-center gap-3"
-                                >
-                                    <img
-                                        src={user.avatarUrl}
-                                        alt={user.login}
-                                        class="h-9 w-9 rounded-full border border-black/5 dark:border-white/10"
-                                    />
-                                    <div>
-                                        <div class="font-semibold text-black/80 dark:text-white/80">
-                                            @{user.login}
-                                        </div>
-                                        <div class="text-xs text-black/45 dark:text-white/45">
-                                            {user.answers.length} / {board.posts.length}
-                                        </div>
-                                    </div>
-                                </a>
-                            </td>
-                            {board.posts.map((post, index) => {
-                                const answer = getAnswer(user.login, post.slug);
-                                return (
-                                    <td
-                                        class:list={[
-                                            "bg-black/[0.03] px-2 py-3 text-center dark:bg-white/[0.04]",
-                                            {
-                                                "rounded-r-2xl": index === board.posts.length - 1,
-                                            },
-                                        ]}
-                                    >
-                                        {answer ? (
-                                            <a
-                                                href={answer.commentUrl}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--primary)]/12 text-[var(--primary)] transition hover:bg-[var(--primary)]/18"
-                                                aria-label={`Open answer for ${post.title}`}
-                                            >
-                                                <Icon name="material-symbols:check-rounded"></Icon>
-                                            </a>
-                                        ) : (
-                                            <span class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/[0.04] text-black/20 dark:bg-white/[0.05] dark:text-white/20">
-                                                <Icon name="material-symbols:close-small-rounded"></Icon>
-                                            </span>
-                                        )}
-                                    </td>
-                                );
-                            })}
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
-    )}
-
-    {board.status === "ok" && board.users.length === 0 && (
-        <div class="rounded-2xl border border-dashed border-[var(--line-divider)] px-4 py-4 text-sm leading-6 text-black/55 dark:text-white/55">
-            目前还没有识别到按模板作答的评论。
-        </div>
-    )}
-
-    {board.status === "missing-token" && (
-        <div class="rounded-2xl border border-dashed border-[var(--line-divider)] px-4 py-4 text-sm leading-6 text-black/55 dark:text-white/55">
-            当前构建环境没有配置 `GITHUB_TOKEN` 或 `GH_TOKEN`，作答看板暂时无法拉取 GitHub Discussions 数据。
-        </div>
-    )}
-
-    {board.status === "not-configured" && (
-        <div class="rounded-2xl border border-dashed border-[var(--line-divider)] px-4 py-4 text-sm leading-6 text-black/55 dark:text-white/55">
-            评论仓库映射信息不完整，无法生成作答看板。
-        </div>
-    )}
-
-    {board.status === "error" && (
-        <div class="rounded-2xl border border-dashed border-[var(--line-divider)] px-4 py-4 text-sm leading-6 text-black/55 dark:text-white/55">
-            拉取作答看板数据失败。{board.errorMessage || ""}
-        </div>
-    )}
+	<div data-board-table class="hidden overflow-x-auto"></div>
 </section>
+
+<script is:inline>
+	(() => {
+		const script = document.currentScript;
+		const root = script?.previousElementSibling;
+		if (!(root instanceof HTMLElement)) {
+			return;
+		}
+
+		const seriesSlug = root.dataset.seriesSlug || "linux-tutorial-series";
+		const apiBase = root.dataset.apiBase || "https://worker.727613.xyz";
+		const statusEl = root.querySelector("[data-board-status]");
+		const tableEl = root.querySelector("[data-board-table]");
+		const countEl = root.querySelector("[data-board-user-count]");
+
+		if (
+			!(statusEl instanceof HTMLElement) ||
+			!(tableEl instanceof HTMLElement) ||
+			!(countEl instanceof HTMLElement)
+		) {
+			return;
+		}
+
+		const escapeHtml = (value) => {
+			return String(value ?? "")
+				.replaceAll("&", "&amp;")
+				.replaceAll("<", "&lt;")
+				.replaceAll(">", "&gt;")
+				.replaceAll('"', "&quot;")
+				.replaceAll("'", "&#39;");
+		};
+
+		const renderStatus = (message) => {
+			statusEl.classList.remove("hidden");
+			statusEl.textContent = message;
+			tableEl.classList.add("hidden");
+			countEl.textContent = "0";
+		};
+
+		const renderTable = (board) => {
+			const posts = Array.isArray(board.posts) ? board.posts : [];
+			const users = Array.isArray(board.users) ? board.users : [];
+
+			countEl.textContent = String(users.length);
+
+			if (users.length === 0) {
+				renderStatus("暂无识别到的模板作答。");
+				return;
+			}
+
+			const headerCells = posts
+				.map((post) => `<th class="pb-2 px-2 font-medium">${escapeHtml(post.title)}</th>`)
+				.join("");
+
+			const rows = users
+				.map((user) => {
+					const answerMap = new Map(
+						(Array.isArray(user.answers) ? user.answers : []).map((answer) => [
+							answer.postSlug,
+							answer,
+						]),
+					);
+
+					const postCells = posts
+						.map((post, index) => {
+							const answer = answerMap.get(post.slug);
+							const roundedClass = index === posts.length - 1 ? " rounded-r-2xl" : "";
+							if (answer?.commentUrl) {
+								return `<td class="bg-black/[0.03] px-2 py-3 text-center dark:bg-white/[0.04]${roundedClass}">
+									<a href="${escapeHtml(answer.commentUrl)}" target="_blank" rel="noopener noreferrer"
+										class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--primary)]/12 text-[var(--primary)] transition hover:bg-[var(--primary)]/18"
+										aria-label="Open answer">
+										&#10003;
+									</a>
+								</td>`;
+							}
+
+							return `<td class="bg-black/[0.03] px-2 py-3 text-center dark:bg-white/[0.04]${roundedClass}">
+								<span class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/[0.04] text-black/20 dark:bg-white/[0.05] dark:text-white/20">-</span>
+							</td>`;
+						})
+						.join("");
+
+					const userUrl = escapeHtml(user.url || `https://github.com/${user.login}`);
+					const avatar = escapeHtml(user.avatarUrl || "");
+					const login = escapeHtml(user.login || "");
+					const finished = Array.isArray(user.answers) ? user.answers.length : 0;
+
+					return `<tr class="align-middle">
+						<td class="rounded-l-2xl bg-black/[0.03] px-3 py-3 dark:bg-white/[0.04]">
+							<a href="${userUrl}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-3">
+								<img src="${avatar}" alt="${login}" class="h-9 w-9 rounded-full border border-black/5 dark:border-white/10" />
+								<div>
+									<div class="font-semibold text-black/80 dark:text-white/80">@${login}</div>
+									<div class="text-xs text-black/45 dark:text-white/45">${finished} / ${posts.length}</div>
+								</div>
+							</a>
+						</td>
+						${postCells}
+					</tr>`;
+				})
+				.join("");
+
+			tableEl.innerHTML = `
+				<table class="w-full min-w-[44rem] border-separate border-spacing-y-2">
+					<thead>
+						<tr class="text-left text-sm text-black/45 dark:text-white/45">
+							<th class="pb-2 pr-3 font-medium">GitHub</th>
+							${headerCells}
+						</tr>
+					</thead>
+					<tbody>${rows}</tbody>
+				</table>
+			`;
+
+			statusEl.classList.add("hidden");
+			tableEl.classList.remove("hidden");
+		};
+
+		const fetchBoard = async (url) => {
+			const controller = new AbortController();
+			const timeout = setTimeout(() => controller.abort(), 8000);
+			try {
+				const response = await fetch(url, {
+					method: "GET",
+					cache: "no-store",
+					signal: controller.signal,
+				});
+				if (!response.ok) {
+					throw new Error(`HTTP ${response.status}`);
+				}
+				return await response.json();
+			} finally {
+				clearTimeout(timeout);
+			}
+		};
+
+		const buildCandidateUrls = () => {
+			const remoteUrl = `${apiBase.replace(/\/+$/, "")}/api/board?series=${encodeURIComponent(seriesSlug)}`;
+			const localUrl = `${window.location.origin}/api/board/?series=${encodeURIComponent(seriesSlug)}`;
+			const isLocalhost =
+				window.location.hostname === "localhost" ||
+				window.location.hostname === "127.0.0.1";
+
+			if (isLocalhost) {
+				return [remoteUrl, localUrl];
+			}
+
+			return [remoteUrl];
+		};
+
+		const load = async () => {
+			renderStatus("正在加载最新作答数据...");
+			let lastError = null;
+			try {
+				let board = null;
+				for (const candidateUrl of buildCandidateUrls()) {
+					try {
+						board = await fetchBoard(candidateUrl);
+						break;
+					} catch (error) {
+						lastError = error;
+					}
+				}
+
+				if (!board) {
+					throw lastError || new Error("no board endpoint available");
+				}
+
+				if (board.status !== "ok") {
+					if (board.status === "missing-token") {
+						renderStatus("看板服务缺少 GH_TOKEN，暂时无法稳定取数。");
+						return;
+					}
+					if (board.status === "not-configured") {
+						renderStatus("看板服务配置不完整（repo/categoryId）。");
+						return;
+					}
+					renderStatus(board.errorMessage || "看板服务返回错误。");
+					return;
+				}
+
+				renderTable(board);
+			} catch (error) {
+				const message =
+					error instanceof Error ? error.message : "unknown error";
+				renderStatus(`加载失败：${message}`);
+			}
+		};
+
+		load();
+	})();
+</script>
