@@ -1,4 +1,6 @@
 ---
+import { getCollection } from "astro:content";
+
 interface Props {
 	seriesSlug: string;
 	apiBase?: string;
@@ -6,12 +8,27 @@ interface Props {
 
 const { seriesSlug } = Astro.props;
 const apiBase = Astro.props.apiBase ?? "https://worker.727613.xyz";
+const seriesPosts = await getCollection("posts", ({ slug }) => {
+	return slug.startsWith(`${seriesSlug}/`);
+});
+const allSeriesPosts = seriesPosts
+	.map((post) => ({
+		slug: post.slug,
+		title: post.data.title,
+		pathname: `/posts/${post.slug}/`,
+	}))
+	.sort((a, b) => a.slug.localeCompare(b.slug));
+const titleMap = Object.fromEntries(
+	allSeriesPosts.map((post) => [post.slug, post.title]),
+);
 ---
 <div
 	class="rounded-2xl border border-black/10 bg-black/[0.03] px-4 py-4 dark:border-white/10 dark:bg-white/[0.03]"
 	data-board-preview
 	data-series-slug={seriesSlug}
 	data-api-base={apiBase}
+	data-posts={JSON.stringify(allSeriesPosts)}
+	data-title-map={JSON.stringify(titleMap)}
 >
 	<div class="mb-4 grid grid-cols-3 gap-2">
 		<div class="rounded-xl bg-white/80 px-3 py-3 text-center dark:bg-black/20">
@@ -67,6 +84,8 @@ const apiBase = Astro.props.apiBase ?? "https://worker.727613.xyz";
 
 		const seriesSlug = root.dataset.seriesSlug || "linux-tutorial-series";
 		const apiBase = root.dataset.apiBase || "https://worker.727613.xyz";
+		const localPosts = JSON.parse(root.dataset.posts || "[]");
+		const titleMap = JSON.parse(root.dataset.titleMap || "{}");
 
 		const usersEl = root.querySelector("[data-preview-users]");
 		const chaptersEl = root.querySelector("[data-preview-chapters]");
@@ -104,14 +123,46 @@ const apiBase = Astro.props.apiBase ?? "https://worker.727613.xyz";
 		};
 
 		const renderStatus = (message) => {
+			statusEl.classList.remove("hidden");
 			statusEl.textContent = message;
 			topWrapEl.classList.add("hidden");
 			progressEl.classList.add("hidden");
 			setCounts(0, 0, 0);
 		};
 
+		const mergePosts = (apiPosts) => {
+			const remotePosts = Array.isArray(apiPosts) ? apiPosts : [];
+			const remotePostMap = new Map(
+				remotePosts.map((post) => [post.slug, post]),
+			);
+			const merged = [];
+			const seen = new Set();
+
+			for (const post of localPosts) {
+				const remotePost = remotePostMap.get(post.slug);
+				merged.push({
+					slug: post.slug,
+					title: titleMap[post.slug] || post.title || remotePost?.title || post.slug,
+					pathname: post.pathname || remotePost?.pathname || "",
+				});
+				seen.add(post.slug);
+			}
+
+			for (const post of remotePosts) {
+				if (seen.has(post.slug)) {
+					continue;
+				}
+				merged.push({
+					...post,
+					title: titleMap[post.slug] || post.title,
+				});
+			}
+
+			return merged.sort((a, b) => a.slug.localeCompare(b.slug));
+		};
+
 		const renderPreview = (board) => {
-			const posts = Array.isArray(board.posts) ? board.posts : [];
+			const posts = mergePosts(board.posts);
 			const users = Array.isArray(board.users) ? board.users : [];
 			const totalAnswers = users.reduce((sum, user) => {
 				return sum + (Array.isArray(user.answers) ? user.answers.length : 0);
@@ -131,6 +182,7 @@ const apiBase = Astro.props.apiBase ?? "https://worker.727613.xyz";
 				.slice(0, 4);
 
 			if (topUsers.length === 0) {
+				statusEl.classList.remove("hidden");
 				statusEl.textContent = "暂无识别到的模板作答。";
 				topWrapEl.classList.add("hidden");
 				progressEl.classList.add("hidden");
@@ -168,7 +220,7 @@ const apiBase = Astro.props.apiBase ?? "https://worker.727613.xyz";
 				})
 				.join("");
 
-			statusEl.textContent = "看板数据已更新";
+			statusEl.classList.add("hidden");
 			topWrapEl.classList.remove("hidden");
 			progressEl.classList.remove("hidden");
 		};

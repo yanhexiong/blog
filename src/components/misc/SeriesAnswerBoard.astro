@@ -1,4 +1,6 @@
 ---
+import { getCollection } from "astro:content";
+
 interface Props {
 	seriesSlug: string;
 	class?: string;
@@ -8,12 +10,27 @@ interface Props {
 const { seriesSlug } = Astro.props;
 const className = Astro.props.class ?? "";
 const apiBase = Astro.props.apiBase ?? "https://worker.727613.xyz";
+const seriesPosts = await getCollection("posts", ({ slug }) => {
+	return slug.startsWith(`${seriesSlug}/`);
+});
+const allSeriesPosts = seriesPosts
+	.map((post) => ({
+		slug: post.slug,
+		title: post.data.title,
+		pathname: `/posts/${post.slug}/`,
+	}))
+	.sort((a, b) => a.slug.localeCompare(b.slug));
+const titleMap = Object.fromEntries(
+	allSeriesPosts.map((post) => [post.slug, post.title]),
+);
 ---
 <section
 	class={`card-base px-6 py-5 ${className}`}
 	data-series-board
 	data-series-slug={seriesSlug}
 	data-api-base={apiBase}
+	data-posts={JSON.stringify(allSeriesPosts)}
+	data-title-map={JSON.stringify(titleMap)}
 >
 	<div class="mb-4 flex items-start justify-between gap-4">
 		<div>
@@ -51,6 +68,8 @@ const apiBase = Astro.props.apiBase ?? "https://worker.727613.xyz";
 
 		const seriesSlug = root.dataset.seriesSlug || "linux-tutorial-series";
 		const apiBase = root.dataset.apiBase || "https://worker.727613.xyz";
+		const localPosts = JSON.parse(root.dataset.posts || "[]");
+		const titleMap = JSON.parse(root.dataset.titleMap || "{}");
 		const statusEl = root.querySelector("[data-board-status]");
 		const tableEl = root.querySelector("[data-board-table]");
 		const countEl = root.querySelector("[data-board-user-count]");
@@ -79,8 +98,39 @@ const apiBase = Astro.props.apiBase ?? "https://worker.727613.xyz";
 			countEl.textContent = "0";
 		};
 
+		const mergePosts = (apiPosts) => {
+			const remotePosts = Array.isArray(apiPosts) ? apiPosts : [];
+			const remotePostMap = new Map(
+				remotePosts.map((post) => [post.slug, post]),
+			);
+			const merged = [];
+			const seen = new Set();
+
+			for (const post of localPosts) {
+				const remotePost = remotePostMap.get(post.slug);
+				merged.push({
+					slug: post.slug,
+					title: titleMap[post.slug] || post.title || remotePost?.title || post.slug,
+					pathname: post.pathname || remotePost?.pathname || "",
+				});
+				seen.add(post.slug);
+			}
+
+			for (const post of remotePosts) {
+				if (seen.has(post.slug)) {
+					continue;
+				}
+				merged.push({
+					...post,
+					title: titleMap[post.slug] || post.title,
+				});
+			}
+
+			return merged.sort((a, b) => a.slug.localeCompare(b.slug));
+		};
+
 		const renderTable = (board) => {
-			const posts = Array.isArray(board.posts) ? board.posts : [];
+			const posts = mergePosts(board.posts);
 			const users = Array.isArray(board.users) ? board.users : [];
 
 			countEl.textContent = String(users.length);

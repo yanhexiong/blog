@@ -39,6 +39,7 @@ draft: false
 - [1.基础Shell指令](/posts/linux-tutorial-series/1-basic-shell-commands/)
 - [1.基础Shell指令-2](/posts/linux-tutorial-series/1-basic-shell-commands-2/)
 - [3.Linux分区与硬盘查看](/posts/linux-tutorial-series/3-linux-disk-partitions/)
+- [4.压缩与进程管理](/posts/linux-tutorial-series/4-compress-process/)
 
 ## 学习目标
 
@@ -200,5 +201,3 @@ conda activate base
 5. 最后决定是修改配置、手动 `source`，还是换成对应 shell 的初始化方式。
 
 这时候你已经不再是“等别人给你同款答案”，而是能靠理解自己把问题拆开，拥有自己的解决思路了。
-
-

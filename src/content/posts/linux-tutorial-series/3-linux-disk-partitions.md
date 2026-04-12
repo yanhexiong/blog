@@ -1,7 +1,7 @@
 ---
 title: 3.Linux分区与硬盘查看
 published: 2026-04-05
-description: Linux 教程系列第三章，围绕磁盘、分区、文件系统与挂载点展开，并练习常见的硬盘查看命令。
+description: Linux 教程系列第三节
 hideFromLists: true
 tags: ["Linux", "教程", "磁盘", "分区"]
 category: 教程

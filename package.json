@@ -13,6 +13,8 @@
     "new-post": "node scripts/new-post.js",
     "format": "biome format --write ./src",
     "lint": "biome check --write ./src",
+    "worker:dev": "pnpm dlx wrangler dev --config workers/blog-api/wrangler.toml",
+    "worker:deploy": "pnpm dlx wrangler deploy --config workers/blog-api/wrangler.toml",
     "preinstall": "npx only-allow pnpm"
   },
   "dependencies": {

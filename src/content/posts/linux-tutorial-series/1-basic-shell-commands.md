@@ -1,7 +1,7 @@
 ---
 title: 1.基础Shell指令
 published: 2026-03-21
-description: Linux 教程系列《基础Shell指令-1》
+description: Linux 教程系列第一节
 hideFromLists: true
 tags: ["Linux", "教程", "Shell"]
 category: 教程

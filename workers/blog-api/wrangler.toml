@@ -1,0 +1,24 @@
+name = "blog-api"
+main = "src/index.js"
+compatibility_date = "2026-04-12"
+account_id = "3c5022ab9378ad930ba5dcb759a41f26"
+workers_dev = false
+preview_urls = false
+
+routes = [
+  { pattern = "worker.727613.xyz/*", zone_name = "727613.xyz" }
+]
+
+[vars]
+GH_REPO = "yanhexiong/blog-comments"
+GH_CATEGORY_ID = "DIC_kwDORsrG5c4C46ai"
+BOARD_DEFAULT_SERIES = "linux-tutorial-series"
+BOARD_SERIES_SLUGS = "linux-tutorial-series"
+
+[triggers]
+crons = ["*/15 * * * *"]
+
+[[kv_namespaces]]
+binding = "ANSWER_BOARD_CACHE"
+id = "d156dca6685445e7b8ab57da85a6a2bc"
+preview_id = "6b25ef16dbf641e4ac1c3450bb52d279"
