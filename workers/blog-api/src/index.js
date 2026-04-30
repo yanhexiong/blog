@@ -1,5 +1,7 @@
 const GITHUB_API = "https://api.github.com";
 const DEFAULT_REPO = "yanhexiong/blog-comments";
+const DEFAULT_CONTENT_REPO = "yanhexiong/blog";
+const DEFAULT_CONTENT_BRANCH = "main";
 const DEFAULT_CATEGORY_ID = "DIC_kwDORsrG5c4C46ai";
 const DEFAULT_SERIES = "linux-tutorial-series";
 const DEFAULT_SERIES_LIST = [DEFAULT_SERIES];
@@ -7,6 +9,7 @@ const PER_PAGE = 100;
 const CACHE_PREFIX = "board:";
 const REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 const CACHE_MAX_AGE_SECONDS = 24 * 60 * 60;
+const CONTENT_ROOT_PATH = "src/content/posts";
 
 const CONTENT_PATH_REGEX = /(?:https?:\/\/[^/\s]+)?\/?posts\/[a-z0-9/_-]+\/?/gi;
 const LABEL_KEYWORDS = [
@@ -246,6 +249,11 @@ async function refreshSeriesCache(seriesSlug, env) {
 
 async function buildBoardData(seriesSlug, env) {
 	const parsedRepo = parseRepo(env.GH_REPO || DEFAULT_REPO);
+	const parsedContentRepo = parseRepo(
+		env.BOARD_CONTENT_REPO || DEFAULT_CONTENT_REPO,
+	);
+	const contentBranch =
+		(env.BOARD_CONTENT_BRANCH || DEFAULT_CONTENT_BRANCH).trim();
 	const categoryId = (env.GH_CATEGORY_ID || DEFAULT_CATEGORY_ID).trim();
 	const token = (env.GH_TOKEN || "").trim();
 
@@ -256,6 +264,16 @@ async function buildBoardData(seriesSlug, env) {
 			errorMessage: "repo/categoryId not configured",
 		};
 	}
+
+	const contentPostsResult =
+		parsedContentRepo && contentBranch
+			? await fetchSeriesContentPosts(
+					seriesSlug,
+					parsedContentRepo,
+					contentBranch,
+					token,
+				)
+			: { ok: false, posts: [] };
 
 	const discussionsResult = await fetchAll(
 		`/repos/${parsedRepo.owner}/${parsedRepo.name}/discussions`,
@@ -281,11 +299,24 @@ async function buildBoardData(seriesSlug, env) {
 		.filter((item) => item.postSlug);
 
 	const postsMap = new Map();
+	if (contentPostsResult.ok) {
+		for (const post of contentPostsResult.posts) {
+			postsMap.set(post.slug, {
+				...post,
+				discussionNumber: null,
+				discussionTitle: undefined,
+			});
+		}
+	}
+
 	for (const item of filtered) {
-		postsMap.set(item.postSlug, {
+		const existing = postsMap.get(item.postSlug) || {
 			slug: item.postSlug,
 			title: postTitleFromSlug(item.postSlug),
-			pathname: item.pathname,
+			pathname: postPathnameFromSlug(item.postSlug),
+		};
+		postsMap.set(item.postSlug, {
+			...existing,
 			discussionNumber: item.discussion.number,
 			discussionTitle: item.discussion.title,
 		});
@@ -360,7 +391,7 @@ async function buildBoardData(seriesSlug, env) {
 		.map((post) => ({
 			slug: post.slug,
 			title: post.title,
-			pathname: post.pathname,
+			pathname: post.pathname || postPathnameFromSlug(post.slug),
 		}));
 
 	return {
@@ -443,12 +474,194 @@ function postSlugFromPath(pathname, seriesSlug) {
 	return `${seriesSlug}/${tail}`;
 }
 
+function postPathnameFromSlug(slug) {
+	return `/posts/${slug}/`;
+}
+
 function postTitleFromSlug(slug) {
 	const tail = slug.split("/").pop() || slug;
 	return tail
 		.split("-")
 		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
 		.join(" ");
+}
+
+function encodeRepoPath(path) {
+	return path
+		.split("/")
+		.map((segment) => encodeURIComponent(segment))
+		.join("/");
+}
+
+function decodeBase64Utf8(base64) {
+	const binary = atob((base64 || "").replace(/\s+/g, ""));
+	const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+	return new TextDecoder("utf-8").decode(bytes);
+}
+
+function extractFrontmatter(markdown) {
+	const match = (markdown || "").match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+	return match?.[1] || "";
+}
+
+function parseFrontmatterTitle(markdown) {
+	const frontmatter = extractFrontmatter(markdown);
+	if (!frontmatter) {
+		return null;
+	}
+
+	const lines = frontmatter.split(/\r?\n/);
+	for (const line of lines) {
+		const match = line.match(/^title:\s*(.+?)\s*$/);
+		if (!match) {
+			continue;
+		}
+
+		let value = match[1].trim();
+		if (
+			(value.startsWith('"') && value.endsWith('"')) ||
+			(value.startsWith("'") && value.endsWith("'"))
+		) {
+			value = value.slice(1, -1);
+		}
+
+		return value || null;
+	}
+
+	return null;
+}
+
+function slugFromContentPath(path, seriesSlug) {
+	const normalized = (path || "").replace(/\\/g, "/");
+	const prefix = `${CONTENT_ROOT_PATH}/${seriesSlug}/`;
+	if (!normalized.startsWith(prefix) || !normalized.endsWith(".md")) {
+		return null;
+	}
+
+	const relativePath = normalized.slice(CONTENT_ROOT_PATH.length + 1, -3);
+	if (!relativePath) {
+		return null;
+	}
+
+	if (relativePath === `${seriesSlug}/index`) {
+		return null;
+	}
+
+	if (relativePath.endsWith("/index")) {
+		return relativePath.slice(0, -"/index".length);
+	}
+
+	return relativePath;
+}
+
+async function fetchRepoDirectoryEntries(repoInfo, dirPath, branch, token) {
+	return fetchGitHubJson(
+		`/repos/${repoInfo.owner}/${repoInfo.name}/contents/${encodeRepoPath(dirPath)}?ref=${encodeURIComponent(branch)}`,
+		token,
+	);
+}
+
+async function fetchRepoFileContent(repoInfo, filePath, branch, token) {
+	return fetchGitHubJson(
+		`/repos/${repoInfo.owner}/${repoInfo.name}/contents/${encodeRepoPath(filePath)}?ref=${encodeURIComponent(branch)}`,
+		token,
+	);
+}
+
+async function listMarkdownFilesRecursive(repoInfo, dirPath, branch, token) {
+	const result = await fetchRepoDirectoryEntries(repoInfo, dirPath, branch, token);
+	if (!result.ok) {
+		return {
+			ok: false,
+			status: result.status,
+			errorMessage: result.errorMessage,
+			paths: [],
+		};
+	}
+
+	const entries = Array.isArray(result.data) ? result.data : [result.data];
+	const paths = [];
+
+	for (const entry of entries) {
+		if (!entry?.path || !entry?.type) {
+			continue;
+		}
+
+		if (entry.type === "dir") {
+			const nested = await listMarkdownFilesRecursive(
+				repoInfo,
+				entry.path,
+				branch,
+				token,
+			);
+			if (!nested.ok) {
+				return nested;
+			}
+			paths.push(...nested.paths);
+			continue;
+		}
+
+		if (entry.type === "file" && entry.path.endsWith(".md")) {
+			paths.push(entry.path);
+		}
+	}
+
+	return {
+		ok: true,
+		paths,
+	};
+}
+
+async function fetchSeriesContentPosts(seriesSlug, repoInfo, branch, token) {
+	const rootPath = `${CONTENT_ROOT_PATH}/${seriesSlug}`;
+	const fileListResult = await listMarkdownFilesRecursive(
+		repoInfo,
+		rootPath,
+		branch,
+		token,
+	);
+	if (!fileListResult.ok) {
+		return {
+			ok: false,
+			status: fileListResult.status,
+			errorMessage: fileListResult.errorMessage,
+			posts: [],
+		};
+	}
+
+	const posts = [];
+	for (const filePath of fileListResult.paths) {
+		const slug = slugFromContentPath(filePath, seriesSlug);
+		if (!slug) {
+			continue;
+		}
+
+		const fileResult = await fetchRepoFileContent(repoInfo, filePath, branch, token);
+		if (!fileResult.ok) {
+			return {
+				ok: false,
+				status: fileResult.status,
+				errorMessage: fileResult.errorMessage,
+				posts: [],
+			};
+		}
+
+		const content =
+			fileResult.data?.encoding === "base64" && typeof fileResult.data?.content === "string"
+				? decodeBase64Utf8(fileResult.data.content)
+				: "";
+		const title = parseFrontmatterTitle(content) || postTitleFromSlug(slug);
+		posts.push({
+			slug,
+			title,
+			pathname: postPathnameFromSlug(slug),
+		});
+	}
+
+	return {
+		ok: true,
+		posts: posts.sort((a, b) => a.slug.localeCompare(b.slug)),
+	};
 }
 
 function normalizeCommentText(text) {

@@ -142,8 +142,8 @@ const titleMap = Object.fromEntries(
 				const remotePost = remotePostMap.get(post.slug);
 				merged.push({
 					slug: post.slug,
-					title: titleMap[post.slug] || post.title || remotePost?.title || post.slug,
-					pathname: post.pathname || remotePost?.pathname || "",
+					title: remotePost?.title || titleMap[post.slug] || post.title || post.slug,
+					pathname: remotePost?.pathname || post.pathname || "",
 				});
 				seen.add(post.slug);
 			}
@@ -154,7 +154,7 @@ const titleMap = Object.fromEntries(
 				}
 				merged.push({
 					...post,
-					title: titleMap[post.slug] || post.title,
+					title: post.title || titleMap[post.slug] || post.slug,
 				});
 			}
 

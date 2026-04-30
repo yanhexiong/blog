@@ -14,6 +14,8 @@ GH_REPO = "yanhexiong/blog-comments"
 GH_CATEGORY_ID = "DIC_kwDORsrG5c4C46ai"
 BOARD_DEFAULT_SERIES = "linux-tutorial-series"
 BOARD_SERIES_SLUGS = "linux-tutorial-series"
+BOARD_CONTENT_REPO = "yanhexiong/blog"
+BOARD_CONTENT_BRANCH = "main"
 
 [triggers]
 crons = ["*/15 * * * *"]
