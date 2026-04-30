@@ -326,16 +326,20 @@ async function buildBoardData(seriesSlug, env) {
 	const userMap = new Map();
 
 	for (const post of [...postsMap.values()].sort((a, b) => a.slug.localeCompare(b.slug))) {
-		const commentsResult = await fetchAll(
-			`/repos/${parsedRepo.owner}/${parsedRepo.name}/discussions/${post.discussionNumber}/comments`,
-			token,
-		);
+		let comments = [];
+		if (post.discussionNumber) {
+			const commentsResult = await fetchAll(
+				`/repos/${parsedRepo.owner}/${parsedRepo.name}/discussions/${post.discussionNumber}/comments`,
+				token,
+			);
 
-		if (!commentsResult.ok) {
-			return classifyFetchFailure(token, commentsResult);
+			if (!commentsResult.ok) {
+				return classifyFetchFailure(token, commentsResult);
+			}
+
+			comments = commentsResult.items;
 		}
 
-		const comments = commentsResult.items;
 		let matchedCommentCount = 0;
 		const commentPreviews = [];
 

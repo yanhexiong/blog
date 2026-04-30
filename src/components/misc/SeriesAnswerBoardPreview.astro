@@ -137,12 +137,34 @@ const titleMap = Object.fromEntries(
 			);
 			const merged = [];
 			const seen = new Set();
+			const fallbackTitleFromSlug = (slug) => {
+				const tail = String(slug || "").split("/").pop() || String(slug || "");
+				return tail
+					.split("-")
+					.map((part) => part ? part.charAt(0).toUpperCase() + part.slice(1) : part)
+					.join(" ");
+			};
+			const resolveDisplayTitle = (slug, localTitle, remoteTitle) => {
+				if (
+					remoteTitle &&
+					localTitle &&
+					remoteTitle === fallbackTitleFromSlug(slug)
+				) {
+					return localTitle;
+				}
+
+				return remoteTitle || localTitle || slug;
+			};
 
 			for (const post of localPosts) {
 				const remotePost = remotePostMap.get(post.slug);
 				merged.push({
 					slug: post.slug,
-					title: remotePost?.title || titleMap[post.slug] || post.title || post.slug,
+					title: resolveDisplayTitle(
+						post.slug,
+						titleMap[post.slug] || post.title,
+						remotePost?.title,
+					),
 					pathname: remotePost?.pathname || post.pathname || "",
 				});
 				seen.add(post.slug);
@@ -154,7 +176,11 @@ const titleMap = Object.fromEntries(
 				}
 				merged.push({
 					...post,
-					title: post.title || titleMap[post.slug] || post.slug,
+					title: resolveDisplayTitle(
+						post.slug,
+						titleMap[post.slug],
+						post.title,
+					),
 				});
 			}
 
