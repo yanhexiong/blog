@@ -1,7 +1,7 @@
 ---
-title: 5.计算机网络-1
+title: 5.计算机网络（1）
 published: 2026-04-30
-description: 计算机网络-1。
+description: 计算机网络（1）。
 hideFromLists: true
 tags: ["Linux", "教程", "计算机网络"]
 category: 教程
