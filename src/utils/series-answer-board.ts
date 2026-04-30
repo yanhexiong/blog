@@ -57,6 +57,9 @@ type AnswerMatchDebug = {
 	bulletMatches: number;
 	fencedBlockMatches: number;
 	labelMatches: number;
+	filledLabelMatches: number;
+	filledNumberedMatches: number;
+	emptyLabelMatches: number;
 	sectionMatches: number;
 	length: number;
 };
@@ -107,6 +110,9 @@ export type SeriesAnswerBoardData = {
 				numberedMatches: number;
 				bulletMatches: number;
 				labelMatches: number;
+				filledLabelMatches: number;
+				filledNumberedMatches: number;
+				emptyLabelMatches: number;
 				sectionMatches: number;
 				length: number;
 				preview: string;
@@ -118,10 +124,61 @@ export type SeriesAnswerBoardData = {
 const GITHUB_REST_ENDPOINT = "https://api.github.com";
 const GITHUB_USER_AGENT = "fuwari-series-answer-board";
 const CONTENT_PATH_REGEX = /(?:https?:\/\/[^/\s]+)?\/?posts\/[a-z0-9/_-]+\/?/gi;
-const LABEL_REGEX =
-	/(命令|回答|判断结果|输出解读|判断依据|步骤|作用|结果|内核版本|发行版信息|根目录内容|系统时间|实践题|思考题)\s*[:：]/g;
-const SECTION_REGEX = /(实践题|思考题|practice|discussion|answers?)/g;
 const PER_PAGE = 100;
+const LABEL_KEYWORDS = [
+	"命令",
+	"回答",
+	"判断结果",
+	"输出解读",
+	"判断依据",
+	"步骤",
+	"作用",
+	"结果",
+	"验证方法",
+	"你的判断",
+	"启动命令",
+	"查看命令",
+	"分析过程",
+	"思路",
+	"内核版本",
+	"发行版信息",
+	"根目录内容",
+	"系统时间",
+	"answer",
+	"command",
+	"result",
+	"reason",
+	"steps",
+];
+const SECTION_KEYWORDS = [
+	"实践题",
+	"简答题",
+	"思考题",
+	"practice",
+	"discussion",
+	"answer",
+	"answers",
+	"short answer",
+];
+
+function escapeRegex(text: string): string {
+	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const LABEL_PATTERN = LABEL_KEYWORDS.map(escapeRegex).join("|");
+const SECTION_PATTERN = SECTION_KEYWORDS.map(escapeRegex).join("|");
+const LABEL_REGEX = new RegExp(`(?:${LABEL_PATTERN})\\s*[:：]`, "g");
+const FILLED_LABEL_REGEX = new RegExp(
+	`(?:^|\\n)\\s*(?:-\\s*)?(?:${LABEL_PATTERN})\\s*[:：]\\s*\\S[^\\n]*`,
+	"gm",
+);
+const EMPTY_LABEL_REGEX = new RegExp(
+	`(?:^|\\n)\\s*(?:-\\s*)?(?:${LABEL_PATTERN})\\s*[:：]\\s*$`,
+	"gm",
+);
+const FILLED_NUMBERED_REGEX =
+	/(?:^|\n)\s*\d+\s*[.)、．。）][^\n]*[:：]\s*\S[^\n]*/gm;
+const SECTION_REGEX = new RegExp(`(?:${SECTION_PATTERN})`, "g");
 
 function normalizeCommentText(text: string): string {
 	return text
@@ -179,6 +236,9 @@ function evaluateAnswerTemplate(
 			bulletMatches: 0,
 			fencedBlockMatches: 0,
 			labelMatches: 0,
+			filledLabelMatches: 0,
+			filledNumberedMatches: 0,
+			emptyLabelMatches: 0,
 			sectionMatches: 0,
 			length: 0,
 		};
@@ -192,7 +252,16 @@ function evaluateAnswerTemplate(
 	const bulletMatches = (normalized.match(/(?:^|\n)\s*-\s+/g) || []).length;
 	const fencedBlockMatches = (normalized.match(/```/g) || []).length;
 	const labelMatches = (normalized.match(LABEL_REGEX) || []).length;
+	const filledLabelMatches = (normalized.match(FILLED_LABEL_REGEX) || [])
+		.length;
+	const filledNumberedMatches = (normalized.match(FILLED_NUMBERED_REGEX) || [])
+		.length;
+	const emptyLabelMatches = (normalized.match(EMPTY_LABEL_REGEX) || []).length;
 	const sectionMatches = (normalized.match(SECTION_REGEX) || []).length;
+	const minimumFilledAnswers = Math.min(
+		2,
+		Math.max(1, Math.ceil(signature.numberedThreshold / 2)),
+	);
 
 	if (headingMatches >= signature.headingThreshold) score += 2;
 	if (numberedMatches >= signature.numberedThreshold) score += 2;
@@ -202,13 +271,20 @@ function evaluateAnswerTemplate(
 	if (sectionMatches >= 1) score += 1;
 	if (normalized.length >= 80) score += 1;
 
-	const matched =
+	const structureMatched =
 		score >= 3 ||
 		(normalized.length >= 80 &&
 			(numberedMatches >= 2 ||
 				bulletMatches >= 3 ||
 				headingMatches >= 1 ||
 				(sectionMatches >= 1 && labelMatches >= 3)));
+	const filledAnswerMatches = filledLabelMatches + filledNumberedMatches;
+	const contentMatched =
+		filledAnswerMatches >= minimumFilledAnswers ||
+		(filledAnswerMatches >= 1 &&
+			sectionMatches >= 2 &&
+			normalized.length >= 180);
+	const matched = structureMatched && contentMatched;
 
 	return {
 		matched,
@@ -218,6 +294,9 @@ function evaluateAnswerTemplate(
 		bulletMatches,
 		fencedBlockMatches,
 		labelMatches,
+		filledLabelMatches,
+		filledNumberedMatches,
+		emptyLabelMatches,
 		sectionMatches,
 		length: normalized.length,
 	};
@@ -592,6 +671,9 @@ async function buildBoardData({
 				numberedMatches: debug.numberedMatches,
 				bulletMatches: debug.bulletMatches,
 				labelMatches: debug.labelMatches,
+				filledLabelMatches: debug.filledLabelMatches,
+				filledNumberedMatches: debug.filledNumberedMatches,
+				emptyLabelMatches: debug.emptyLabelMatches,
 				sectionMatches: debug.sectionMatches,
 				length: debug.length,
 				preview: comment.bodyText.replace(/\s+/g, " ").slice(0, 180),

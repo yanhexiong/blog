@@ -9,8 +9,61 @@ const REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 const CACHE_MAX_AGE_SECONDS = 24 * 60 * 60;
 
 const CONTENT_PATH_REGEX = /(?:https?:\/\/[^/\s]+)?\/?posts\/[a-z0-9/_-]+\/?/gi;
-const LABEL_REGEX = /(command|answer|result|reason|step|practice|discussion|kernel|cuda|uuid|mount|toolkit)\s*:/g;
-const SECTION_REGEX = /(practice|discussion|answer)/g;
+const LABEL_KEYWORDS = [
+	"命令",
+	"回答",
+	"判断结果",
+	"输出解读",
+	"判断依据",
+	"步骤",
+	"作用",
+	"结果",
+	"验证方法",
+	"你的判断",
+	"启动命令",
+	"查看命令",
+	"分析过程",
+	"思路",
+	"内核版本",
+	"发行版信息",
+	"根目录内容",
+	"系统时间",
+	"command",
+	"answer",
+	"result",
+	"reason",
+	"step",
+	"steps",
+];
+const SECTION_KEYWORDS = [
+	"实践题",
+	"简答题",
+	"思考题",
+	"practice",
+	"discussion",
+	"answer",
+	"answers",
+	"short answer",
+];
+
+function escapeRegex(text) {
+	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const LABEL_PATTERN = LABEL_KEYWORDS.map(escapeRegex).join("|");
+const SECTION_PATTERN = SECTION_KEYWORDS.map(escapeRegex).join("|");
+const LABEL_REGEX = new RegExp(`(?:${LABEL_PATTERN})\\s*[:：]`, "g");
+const FILLED_LABEL_REGEX = new RegExp(
+	`(?:^|\\n)\\s*(?:-\\s*)?(?:${LABEL_PATTERN})\\s*[:：]\\s*\\S[^\\n]*`,
+	"gm",
+);
+const EMPTY_LABEL_REGEX = new RegExp(
+	`(?:^|\\n)\\s*(?:-\\s*)?(?:${LABEL_PATTERN})\\s*[:：]\\s*$`,
+	"gm",
+);
+const FILLED_NUMBERED_REGEX =
+	/(?:^|\n)\s*\d+\s*[.)、．。）][^\n]*[:：]\s*\S[^\n]*/gm;
+const SECTION_REGEX = new RegExp(`(?:${SECTION_PATTERN})`, "g");
 
 export default {
 	async fetch(request, env, ctx) {
@@ -269,6 +322,9 @@ async function buildBoardData(seriesSlug, env) {
 				numberedMatches: debug.numberedMatches,
 				bulletMatches: debug.bulletMatches,
 				labelMatches: debug.labelMatches,
+				filledLabelMatches: debug.filledLabelMatches,
+				filledNumberedMatches: debug.filledNumberedMatches,
+				emptyLabelMatches: debug.emptyLabelMatches,
 				sectionMatches: debug.sectionMatches,
 				length: debug.length,
 				preview: (comment.body || "").replace(/\s+/g, " ").slice(0, 180),
@@ -413,6 +469,9 @@ function evaluateAnswerTemplate(commentBody) {
 			bulletMatches: 0,
 			fencedBlockMatches: 0,
 			labelMatches: 0,
+			filledLabelMatches: 0,
+			filledNumberedMatches: 0,
+			emptyLabelMatches: 0,
 			sectionMatches: 0,
 			length: 0,
 		};
@@ -425,6 +484,10 @@ function evaluateAnswerTemplate(commentBody) {
 	const bulletMatches = (normalized.match(/(?:^|\n)\s*-\s+/g) || []).length;
 	const fencedBlockMatches = (normalized.match(/```/g) || []).length;
 	const labelMatches = (normalized.match(LABEL_REGEX) || []).length;
+	const filledLabelMatches = (normalized.match(FILLED_LABEL_REGEX) || []).length;
+	const filledNumberedMatches =
+		(normalized.match(FILLED_NUMBERED_REGEX) || []).length;
+	const emptyLabelMatches = (normalized.match(EMPTY_LABEL_REGEX) || []).length;
 	const sectionMatches = (normalized.match(SECTION_REGEX) || []).length;
 
 	if (headingMatches >= 1) score += 2;
@@ -435,10 +498,17 @@ function evaluateAnswerTemplate(commentBody) {
 	if (sectionMatches >= 1) score += 1;
 	if (normalized.length >= 80) score += 1;
 
-	const matched =
+	const structureMatched =
 		score >= 3 ||
 		(normalized.length >= 80 &&
 			(numberedMatches >= 2 || bulletMatches >= 3 || headingMatches >= 1));
+	const filledAnswerMatches = filledLabelMatches + filledNumberedMatches;
+	const contentMatched =
+		filledAnswerMatches >= 2 ||
+		(filledAnswerMatches >= 1 &&
+			sectionMatches >= 2 &&
+			normalized.length >= 180);
+	const matched = structureMatched && contentMatched;
 
 	return {
 		matched,
@@ -448,6 +518,9 @@ function evaluateAnswerTemplate(commentBody) {
 		bulletMatches,
 		fencedBlockMatches,
 		labelMatches,
+		filledLabelMatches,
+		filledNumberedMatches,
+		emptyLabelMatches,
 		sectionMatches,
 		length: normalized.length,
 	};

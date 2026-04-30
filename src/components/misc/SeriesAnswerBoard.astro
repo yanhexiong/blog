@@ -235,7 +235,7 @@ const titleMap = Object.fromEntries(
 				window.location.hostname === "127.0.0.1";
 
 			if (isLocalhost) {
-				return [remoteUrl, localUrl];
+				return [localUrl, remoteUrl];
 			}
 
 			return [remoteUrl];
