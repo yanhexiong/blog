@@ -41,6 +41,7 @@ draft: false
 - [3.Linux分区与硬盘查看](/posts/linux-tutorial-series/3-linux-disk-partitions/)
 - [4.压缩与进程管理](/posts/linux-tutorial-series/4-compress-process/)
 - [5.Linux网络基础与排查](/posts/linux-tutorial-series/5-network-basics/)
+- [6.计算机网络（2）](/posts/linux-tutorial-series/6-network-routing-dns/)
 
 ## 学习目标
 
