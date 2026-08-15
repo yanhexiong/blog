@@ -61,4 +61,4 @@ lang: zh_CN
 
 ## 部署
 
-生产站点地址配置在 `astro.config.mjs` 的 `site` 字段，目前为 `https://blog.727613.xyz`。部署到 Vercel、Netlify 或 GitHub Pages 前，请先确认域名和该配置一致。
+生产站点地址配置在 `astro.config.mjs` 的 `site` 字段，目前为 `https://blog.yahenix.top`。部署到 Vercel、Netlify 或 GitHub Pages 前，请先确认域名和该配置一致。

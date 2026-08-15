@@ -3,7 +3,7 @@ import MainGridLayout from "@layouts/MainGridLayout.astro";
 import { getSortedPostsList } from "@utils/content-utils";
 import { getPostUrlBySlug, url } from "@utils/url-utils";
 
-const siteOrigin = Astro.site ?? new URL("https://blog.727613.xyz");
+const siteOrigin = Astro.site ?? new URL("https://blog.yahenix.top");
 const sitemapXmlUrl = new URL("sitemap-index.xml", siteOrigin).toString();
 const allPosts = await getSortedPostsList({ includeHiddenFromLists: true });
 

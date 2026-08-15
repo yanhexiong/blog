@@ -7,7 +7,7 @@ interface Props {
 }
 
 const { seriesSlug } = Astro.props;
-const apiBase = Astro.props.apiBase ?? "https://worker.727613.xyz";
+const apiBase = Astro.props.apiBase ?? "https://worker.yahenix.top";
 const seriesPosts = await getCollection("posts", ({ slug }) => {
 	return slug.startsWith(`${seriesSlug}/`);
 });
@@ -83,7 +83,7 @@ const titleMap = Object.fromEntries(
 		}
 
 		const seriesSlug = root.dataset.seriesSlug || "linux-tutorial-series";
-		const apiBase = root.dataset.apiBase || "https://worker.727613.xyz";
+		const apiBase = root.dataset.apiBase || "https://worker.yahenix.top";
 		const localPosts = JSON.parse(root.dataset.posts || "[]");
 		const titleMap = JSON.parse(root.dataset.titleMap || "{}");
 

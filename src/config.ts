@@ -72,7 +72,7 @@ export const analyticsConfig: AnalyticsConfig = {
 	scriptUrl: "https://cloud.umami.is/script.js",
 	websiteId: "3e7f68ba-c8f6-43e3-84e2-4e62ed9dc230",
 	hostUrl: "",
-	domains: ["blog.727613.xyz"],
+	domains: ["blog.yahenix.top"],
 	autoTrack: true,
 	doNotTrack: true,
 	shareUrl: "https://cloud.umami.is/share/VMkUrHT0JZ8tocmF",
