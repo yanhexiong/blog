@@ -17,8 +17,7 @@ interface Props {
 const { notes } = Astro.props;
 const sortedNotes = [...notes].sort((a, b) => {
 	const dateDifference =
-		new Date(a.data.published).getTime() -
-		new Date(b.data.published).getTime();
+		new Date(a.data.published).getTime() - new Date(b.data.published).getTime();
 	return dateDifference || a.slug.localeCompare(b.slug);
 });
 ---
