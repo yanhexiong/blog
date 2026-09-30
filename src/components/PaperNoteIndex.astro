@@ -1,0 +1,60 @@
+---
+import { getPostUrlBySlug } from "@utils/url-utils";
+
+interface PaperNote {
+	slug: string;
+	data: {
+		title: string;
+		paperTitle?: string;
+		published: Date | string;
+	};
+}
+
+interface Props {
+	notes: PaperNote[];
+}
+
+const { notes } = Astro.props;
+const sortedNotes = [...notes].sort((a, b) => {
+	const dateDifference =
+		new Date(a.data.published).getTime() -
+		new Date(b.data.published).getTime();
+	return dateDifference || a.slug.localeCompare(b.slug);
+});
+---
+
+{sortedNotes.length > 0 && (
+	<ol class="paper-note-index">
+		{sortedNotes.map((note) => (
+			<li>
+				<a
+					href={getPostUrlBySlug(note.slug)}
+					data-no-swup
+					class="text-black/75 transition hover:text-[var(--primary)] dark:text-white/75"
+				>
+					{note.data.paperTitle || note.data.title}
+				</a>
+			</li>
+		))}
+	</ol>
+)}
+
+<style>
+	.paper-note-index {
+		display: grid;
+		gap: 0.5rem;
+		margin: 0 0 1.75rem;
+		padding-left: 1.5rem;
+	}
+
+	.paper-note-index li::marker {
+		color: var(--primary);
+		font-weight: 700;
+	}
+
+	.paper-note-index a {
+		font-weight: 600;
+		line-height: 1.5;
+		overflow-wrap: anywhere;
+	}
+</style>

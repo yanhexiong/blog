@@ -118,9 +118,33 @@
     }
 
     .katex-display-container {
+        width: 100%;
         max-width: 100%;
+        min-width: 0;
         overflow-x: auto;
+        overflow-y: hidden;
+        box-sizing: border-box;
         margin: 1em 0;
+        overscroll-behavior-x: contain;
     }
-    
+
+    .katex-table-scroll {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        overflow-x: auto;
+        overflow-y: hidden;
+        box-sizing: border-box;
+        margin: 1rem 0;
+        overscroll-behavior-x: contain;
+    }
+
+    .katex-table-scroll .katex-display-container {
+        width: max-content;
+        max-width: none;
+        min-width: 100%;
+        overflow: visible;
+        margin: 0;
+    }
+
 }

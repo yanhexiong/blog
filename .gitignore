@@ -1,5 +1,6 @@
 # build output
 dist/
+workers/blog-api/.wrangler/
 
 # generated types
 .astro/

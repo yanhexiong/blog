@@ -1,0 +1,242 @@
+---
+import { getPostUrlBySlug } from "@utils/url-utils";
+
+interface Paper {
+	slug: string;
+	data: {
+		title: string;
+		paperTitle?: string;
+		paperPublicationDate?: Date | string;
+	};
+}
+
+interface Props {
+	papers: Paper[];
+}
+
+const { papers } = Astro.props;
+
+function dateText(value?: Date | string) {
+	if (!value) return "日期待补";
+	return value instanceof Date ? value.toISOString().slice(0, 10) : value;
+}
+
+function yearText(value?: Date | string) {
+	return value ? dateText(value).slice(0, 4) : "日期待补";
+}
+
+function monthDayText(value?: Date | string) {
+	if (!value) return "待补";
+	const match = dateText(value).match(/^\d{4}-(\d{2})(?:-(\d{2}))?$/);
+	if (!match) return "待补";
+	return match[2] ? `${match[1]}月${match[2]}日` : `${match[1]}月`;
+}
+
+function dateRank(value?: Date | string) {
+	if (!value) return Number.NEGATIVE_INFINITY;
+	const text = dateText(value);
+	const normalized = /^\d{4}-\d{2}$/.test(text) ? `${text}-01` : text;
+	return Date.parse(`${normalized}T00:00:00Z`);
+}
+
+const groupedPapers = new Map<string, Paper[]>();
+for (const paper of papers) {
+	const year = yearText(paper.data.paperPublicationDate);
+	const group = groupedPapers.get(year) || [];
+	group.push(paper);
+	groupedPapers.set(year, group);
+}
+
+const yearGroups = [...groupedPapers.entries()]
+	.map(([year, groupPapers]) => ({
+		year,
+		papers: groupPapers.sort((a, b) => {
+			const dateDifference =
+				dateRank(b.data.paperPublicationDate) -
+				dateRank(a.data.paperPublicationDate);
+			const titleA = a.data.paperTitle || a.data.title;
+			const titleB = b.data.paperTitle || b.data.title;
+			return dateDifference || titleA.localeCompare(titleB);
+		}),
+	}))
+	.sort((a, b) => {
+		if (a.year === "日期待补") return 1;
+		if (b.year === "日期待补") return -1;
+		return b.year.localeCompare(a.year);
+	});
+---
+
+{yearGroups.length > 0 && (
+	<section class="paper-timeline-section">
+		<h2>论文发表时间轴</h2>
+		<ol class="paper-timeline" aria-label="论文发表时间轴">
+			{yearGroups.map((group) => (
+				<li class="paper-timeline-year-group">
+					<div class="paper-timeline-row paper-timeline-year-row">
+						<span class="paper-timeline-date"></span>
+						<span class="paper-timeline-marker" aria-hidden="true">
+							<span class="paper-timeline-year-dot"></span>
+						</span>
+						<h3 class="paper-timeline-year">{group.year}</h3>
+					</div>
+					<ol class="paper-timeline-papers">
+						{group.papers.map((paper) => {
+							const date = paper.data.paperPublicationDate;
+							const dateTime = date
+								? date instanceof Date
+									? date.toISOString().slice(0, 10)
+									: date
+								: undefined;
+							return (
+								<li class="paper-timeline-row paper-timeline-item">
+									{dateTime ? (
+										<time class="paper-timeline-date" datetime={dateTime}>
+											{monthDayText(date)}
+										</time>
+									) : (
+										<span class="paper-timeline-date">{monthDayText(date)}</span>
+									)}
+									<span class="paper-timeline-marker" aria-hidden="true">
+										<span class="paper-timeline-dot"></span>
+									</span>
+									<a
+										class="paper-timeline-title"
+										href={getPostUrlBySlug(paper.slug)}
+										data-no-swup
+									>
+										{paper.data.paperTitle || paper.data.title}
+									</a>
+								</li>
+							);
+						})}
+					</ol>
+				</li>
+			))}
+		</ol>
+	</section>
+)}
+
+<style>
+	.paper-timeline-section h2 {
+		margin-bottom: 1rem;
+	}
+
+	.paper-timeline,
+	.paper-timeline-papers {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.paper-timeline-year-group {
+		--timeline-date-width: 5.5rem;
+		--timeline-track-width: 1.25rem;
+		--timeline-gap: 0.75rem;
+		position: relative;
+		margin-top: 0.75rem;
+	}
+
+	.paper-timeline-year-group::before {
+		position: absolute;
+		top: 0.8rem;
+		bottom: 0.85rem;
+		left: calc(
+			var(--timeline-date-width) + var(--timeline-gap) +
+			var(--timeline-track-width) / 2
+		);
+		width: 1px;
+		background: var(--line-divider);
+		content: "";
+	}
+
+	.paper-timeline-row {
+		display: grid;
+		grid-template-columns:
+			var(--timeline-date-width) var(--timeline-track-width)
+			minmax(0, 1fr);
+		column-gap: var(--timeline-gap);
+		align-items: start;
+	}
+
+	.paper-timeline-year-row {
+		min-height: 2.25rem;
+	}
+
+	.paper-timeline-date {
+		padding-top: 0.2rem;
+		color: rgb(0 0 0 / 55%);
+		font-size: 0.875rem;
+		text-align: right;
+		white-space: nowrap;
+	}
+
+	.dark .paper-timeline-date {
+		color: rgb(255 255 255 / 55%);
+	}
+
+	.paper-timeline-marker {
+		position: relative;
+		z-index: 1;
+		display: flex;
+		justify-content: center;
+	}
+
+	.paper-timeline-year-dot,
+	.paper-timeline-dot {
+		flex: 0 0 auto;
+		border: 2px solid var(--card-bg);
+		border-radius: 50%;
+		background: var(--primary);
+	}
+
+	.paper-timeline-year-dot {
+		width: 0.875rem;
+		height: 0.875rem;
+		margin-top: 0.25rem;
+		box-shadow: 0 0 0 2px color-mix(in oklab, var(--primary) 20%, transparent);
+	}
+
+	.paper-timeline-dot {
+		width: 0.625rem;
+		height: 0.625rem;
+		margin-top: 0.4rem;
+	}
+
+	.paper-timeline-year {
+		margin: 0;
+		padding-top: 0.05rem;
+		font-size: 1rem;
+		font-weight: 700;
+		line-height: 1.5;
+	}
+
+	.paper-timeline-item {
+		min-height: 3rem;
+	}
+
+	.paper-timeline-title {
+		min-width: 0;
+		padding: 0.05rem 0 0.75rem;
+		color: rgb(0 0 0 / 78%);
+		font-weight: 600;
+		line-height: 1.5;
+		overflow-wrap: anywhere;
+		transition: color 150ms ease;
+	}
+
+	.dark .paper-timeline-title {
+		color: rgb(255 255 255 / 78%);
+	}
+
+	.paper-timeline-title:hover {
+		color: var(--primary);
+	}
+
+	@media (max-width: 480px) {
+		.paper-timeline-year-group {
+			--timeline-date-width: 4.5rem;
+			--timeline-track-width: 1rem;
+			--timeline-gap: 0.5rem;
+		}
+	}
+</style>

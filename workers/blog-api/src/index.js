@@ -7,6 +7,10 @@ const DEFAULT_SERIES = "linux-tutorial-series";
 const DEFAULT_SERIES_LIST = [DEFAULT_SERIES];
 const PER_PAGE = 100;
 const CACHE_PREFIX = "board:";
+const ANNOTATION_PREFIX = "paper-annotations:v1:";
+const ANNOTATION_RATE_PREFIX = "paper-annotations:rate:";
+const ANNOTATION_RATE_LIMIT = 20;
+const ANNOTATION_RATE_WINDOW_SECONDS = 600;
 const REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 const CACHE_MAX_AGE_SECONDS = 24 * 60 * 60;
 const CONTENT_ROOT_PATH = "src/content/posts";
@@ -81,6 +85,15 @@ export default {
 };
 
 async function handleFetch(request, env, ctx) {
+	const url = new URL(request.url);
+	const pathname = url.pathname;
+	if (
+		(pathname === "/api/annotations" || pathname.startsWith("/api/annotations/")) &&
+		env.PAPER_ANNOTATIONS_ENABLED !== "true"
+	) {
+		return json({ error: "Not found" }, 404);
+	}
+
 	if (request.method === "OPTIONS") {
 		return new Response(null, {
 			status: 204,
@@ -88,8 +101,30 @@ async function handleFetch(request, env, ctx) {
 		});
 	}
 
-	const url = new URL(request.url);
-	const pathname = url.pathname;
+	if (pathname === "/api/annotations") {
+		if (request.method === "GET") {
+			return getPaperAnnotations(url, env);
+		}
+		if (request.method === "POST") {
+			return createPaperAnnotation(request, env);
+		}
+		return json({ error: "Method not allowed" }, 405);
+	}
+
+	const annotationCommentMatch = pathname.match(
+		/^\/api\/annotations\/([0-9a-f-]{36})\/comments$/i,
+	);
+	if (annotationCommentMatch) {
+		if (request.method !== "POST") {
+			return json({ error: "Method not allowed" }, 405);
+		}
+		return addPaperAnnotationComment(
+			request,
+			url,
+			annotationCommentMatch[1],
+			env,
+		);
+	}
 
 	if (pathname === "/health") {
 		return json(
@@ -155,7 +190,7 @@ async function handleFetch(request, env, ctx) {
 function corsHeaders() {
 	return {
 		"access-control-allow-origin": "*",
-		"access-control-allow-methods": "GET,OPTIONS",
+		"access-control-allow-methods": "GET,POST,OPTIONS",
 		"access-control-allow-headers": "content-type,authorization",
 	};
 }
@@ -169,6 +204,197 @@ function json(data, status) {
 			...corsHeaders(),
 		},
 	});
+}
+
+function annotationDocument(value) {
+	if (
+		typeof value !== "string" ||
+		value.length > 180 ||
+		!/^test-time-scaling-mllm\/[a-z0-9/_-]+$/.test(value) ||
+		value.includes("//")
+	) {
+		return null;
+	}
+	return value;
+}
+
+function annotationText(value, maxLength) {
+	if (typeof value !== "string") return null;
+	const text = value.trim();
+	return text.length > 0 && text.length <= maxLength ? text : null;
+}
+
+function annotationThreadPrefix(document) {
+	return `${ANNOTATION_PREFIX}${document}:`;
+}
+
+async function readAnnotationBody(request) {
+	try {
+		const body = await request.text();
+		if (new TextEncoder().encode(body).byteLength > 12000) return null;
+		return JSON.parse(body);
+	} catch {
+		return null;
+	}
+}
+
+async function checkAnnotationRateLimit(request, kv) {
+	const source =
+		request.headers.get("cf-connecting-ip") ||
+		request.headers.get("x-forwarded-for") ||
+		"local";
+	const digest = await crypto.subtle.digest(
+		"SHA-256",
+		new TextEncoder().encode(source),
+	);
+	const ipHash = Array.from(new Uint8Array(digest), (byte) =>
+		byte.toString(16).padStart(2, "0"),
+	).join("");
+	const key = `${ANNOTATION_RATE_PREFIX}${ipHash}`;
+	const current = Number(await kv.get(key)) || 0;
+	if (current >= ANNOTATION_RATE_LIMIT) return false;
+	await kv.put(key, String(current + 1), {
+		expirationTtl: ANNOTATION_RATE_WINDOW_SECONDS,
+	});
+	return true;
+}
+
+async function getPaperAnnotations(url, env) {
+	const document = annotationDocument(url.searchParams.get("document"));
+	if (!document) return json({ error: "Invalid document" }, 400);
+	const kv = env.ANSWER_BOARD_CACHE;
+	if (!kv) return json({ error: "Annotation storage is unavailable" }, 503);
+
+	const prefix = annotationThreadPrefix(document);
+	const listedKeys = [];
+	let cursor;
+	do {
+		const page = await kv.list({ prefix, cursor, limit: 1000 });
+		listedKeys.push(...page.keys);
+		cursor = page.list_complete ? undefined : page.cursor;
+	} while (cursor);
+
+	const threads = new Map();
+	for (const key of listedKeys) {
+		const remainder = key.name.slice(prefix.length);
+		const separator = remainder.indexOf(":");
+		if (separator < 0) continue;
+		const threadId = remainder.slice(0, separator);
+		const kind = remainder.slice(separator + 1);
+		if (!threads.has(threadId)) threads.set(threadId, { metadataKey: null, commentKeys: [] });
+		const thread = threads.get(threadId);
+		if (kind === "meta") thread.metadataKey = key.name;
+		else if (kind.startsWith("comment:")) thread.commentKeys.push(key.name);
+	}
+
+	const annotations = [];
+	for (const thread of threads.values()) {
+		if (!thread.metadataKey) continue;
+		const metadata = await kv.get(thread.metadataKey, "json");
+		if (!metadata) continue;
+
+		const comments = await Promise.all(
+			thread.commentKeys.map((key) => kv.get(key, "json")),
+		);
+		const availableComments = comments.filter(Boolean);
+		availableComments.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+		annotations.push({ ...metadata, comments: availableComments });
+	}
+	annotations.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+	return json({ annotations }, 200);
+}
+
+async function createPaperAnnotation(request, env) {
+	const kv = env.ANSWER_BOARD_CACHE;
+	if (!kv) return json({ error: "Annotation storage is unavailable" }, 503);
+	const body = await readAnnotationBody(request);
+	if (!body) return json({ error: "Invalid request body" }, 400);
+
+	const document = annotationDocument(body.document);
+	const quote = annotationText(body.quote, 2000);
+	const author = annotationText(body.author, 40);
+	const text = annotationText(body.text, 3000);
+	const prefix = typeof body.prefix === "string" ? body.prefix.slice(-120) : "";
+	const suffix = typeof body.suffix === "string" ? body.suffix.slice(0, 120) : "";
+	const start = Number.isSafeInteger(body.start) && body.start >= 0 ? body.start : 0;
+	const end = Number.isSafeInteger(body.end) && body.end > start
+		? body.end
+		: start + (quote?.length || 0);
+	if (
+		!document ||
+		!quote ||
+		!author ||
+		!text ||
+		!Number.isSafeInteger(end) ||
+		end - start > 3000
+	) {
+		return json({ error: "Invalid annotation" }, 400);
+	}
+	if (!(await checkAnnotationRateLimit(request, kv))) {
+		return json({ error: "Too many comments. Try again later." }, 429);
+	}
+
+	const id = crypto.randomUUID();
+	const createdAt = new Date().toISOString();
+	const annotation = {
+		id,
+		document,
+		quote,
+		prefix,
+		suffix,
+		start,
+		end,
+		createdAt,
+	};
+	const comment = {
+		id: crypto.randomUUID(),
+		author,
+		text,
+		createdAt,
+	};
+	const keyPrefix = `${annotationThreadPrefix(document)}${id}:`;
+	try {
+		await kv.put(`${keyPrefix}meta`, JSON.stringify(annotation));
+		await kv.put(`${keyPrefix}comment:${comment.id}`, JSON.stringify(comment));
+	} catch {
+		await kv.delete(`${keyPrefix}meta`).catch(() => {});
+		return json({ error: "Could not save annotation" }, 500);
+	}
+	return json({ annotation: { ...annotation, comments: [comment] } }, 201);
+}
+
+async function addPaperAnnotationComment(request, url, threadId, env) {
+	const kv = env.ANSWER_BOARD_CACHE;
+	if (!kv) return json({ error: "Annotation storage is unavailable" }, 503);
+	const document = annotationDocument(url.searchParams.get("document"));
+	if (!document) return json({ error: "Invalid document" }, 400);
+	const body = await readAnnotationBody(request);
+	if (!body) return json({ error: "Invalid request body" }, 400);
+	const author = annotationText(body.author, 40);
+	const text = annotationText(body.text, 3000);
+	if (!author || !text) return json({ error: "Invalid comment" }, 400);
+	if (!(await checkAnnotationRateLimit(request, kv))) {
+		return json({ error: "Too many comments. Try again later." }, 429);
+	}
+
+	const prefix = annotationThreadPrefix(document);
+	const metadata = await kv.get(`${prefix}${threadId}:meta`, "json");
+	if (!metadata) return json({ error: "Annotation not found" }, 404);
+	const comment = {
+		id: crypto.randomUUID(),
+		author,
+		text,
+		createdAt: new Date().toISOString(),
+	};
+	try {
+		await kv.put(
+			`${prefix}${threadId}:comment:${comment.id}`,
+			JSON.stringify(comment),
+		);
+	} catch {
+		return json({ error: "Could not save comment" }, 500);
+	}
+	return json({ comment }, 201);
 }
 
 function getSeriesSlugs(env) {

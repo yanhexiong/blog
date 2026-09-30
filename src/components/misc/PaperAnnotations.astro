@@ -1,0 +1,853 @@
+---
+interface Props {
+	documentSlug: string;
+}
+
+const { documentSlug } = Astro.props;
+const apiBase = import.meta.env.DEV
+	? "http://localhost:8788"
+	: "https://worker.yahenix.top";
+---
+
+<div class="paper-annotations-host" data-paper-annotations-host>
+	<aside
+		class="paper-annotations"
+		data-paper-annotations
+		data-document={documentSlug}
+		data-api-base={apiBase}
+		aria-label="正文批注"
+	>
+		<header class="paper-annotations-header">
+			<div>
+				<h2>批注</h2>
+				<span data-annotation-count>0</span>
+			</div>
+			<div class="paper-annotations-state">
+				<span>公开留言 · 昵称不验证身份</span>
+				<p data-annotation-status role="status">正在加载批注</p>
+			</div>
+		</header>
+
+		<form class="paper-annotation-composer" data-new-annotation hidden>
+			<button class="paper-annotation-back" type="button" data-back-to-list>返回批注列表</button>
+			<blockquote data-selected-quote></blockquote>
+			<label>
+				<span>昵称</span>
+				<input name="author" maxlength="40" autocomplete="nickname" required />
+			</label>
+			<label>
+				<span>留言</span>
+				<textarea name="text" maxlength="3000" rows="4" required></textarea>
+			</label>
+			<button class="paper-annotation-submit" type="submit">发布批注</button>
+		</form>
+
+		<section class="paper-annotation-thread" data-thread-view hidden>
+			<button class="paper-annotation-back" type="button" data-back-to-list>返回批注列表</button>
+			<blockquote data-thread-quote></blockquote>
+			<div class="paper-annotation-comments" data-thread-comments></div>
+			<form class="paper-annotation-reply" data-reply-form>
+				<label>
+					<span>昵称</span>
+					<input name="author" maxlength="40" autocomplete="nickname" required />
+				</label>
+				<label>
+					<span>回复</span>
+					<textarea name="text" maxlength="3000" rows="3" required></textarea>
+				</label>
+				<button class="paper-annotation-submit" type="submit">回复</button>
+			</form>
+		</section>
+
+		<p class="paper-annotations-empty" data-empty-state hidden>还没有批注</p>
+		<ol class="paper-annotation-list" data-annotation-list></ol>
+	</aside>
+</div>
+
+<div class="paper-annotation-adder" data-annotation-adder hidden>
+	<button type="button" data-annotate-selection>批注所选内容</button>
+</div>
+
+<script>
+	let annotationController: AbortController | null = null;
+	let mountedPanel: HTMLElement | null = null;
+	let mountedAdder: HTMLElement | null = null;
+
+	function initPaperAnnotations() {
+		annotationController?.abort();
+		annotationController = null;
+		(window as any).CSS?.highlights?.delete("paper-annotations");
+
+		const pageRoot = document.querySelector<HTMLElement>("#swup-container") || document.body;
+		const article = pageRoot.querySelector<HTMLElement>(".paper-note-markdown");
+		const host = pageRoot.querySelector<HTMLElement>("[data-paper-annotations-host]");
+		const currentPath = decodeURIComponent(window.location.pathname).replace(/\/+$/, "");
+		const mountedForCurrentNote =
+			mountedPanel && currentPath.endsWith(`/posts/${mountedPanel.dataset.document}`);
+		const panel =
+			pageRoot.querySelector<HTMLElement>("[data-paper-annotations]") ||
+			(mountedForCurrentNote ? mountedPanel : null);
+		const adder =
+			pageRoot.querySelector<HTMLElement>("[data-annotation-adder]") ||
+			(panel === mountedPanel ? mountedAdder : null);
+		if (!article || !host || !panel || !adder) {
+			mountedPanel?.remove();
+			mountedAdder?.remove();
+			mountedPanel = null;
+			mountedAdder = null;
+			return;
+		}
+		if (mountedPanel && mountedPanel !== panel) mountedPanel.remove();
+		if (mountedAdder && mountedAdder !== adder) mountedAdder.remove();
+		const placePanel = () => {
+			const parent = window.matchMedia("(min-width: 1536px)").matches
+				? document.body
+				: host;
+			if (panel.parentElement !== parent) parent.append(panel);
+		};
+		placePanel();
+		document.body.append(adder);
+		mountedPanel = panel;
+		mountedAdder = adder;
+		annotationController = new AbortController();
+		const { signal } = annotationController;
+		window.addEventListener("resize", placePanel, { passive: true, signal });
+	
+		const documentSlug = panel.dataset.document || "";
+		const apiBase = panel.dataset.apiBase || "";
+		const list = panel.querySelector<HTMLOListElement>("[data-annotation-list]")!;
+		const status = panel.querySelector<HTMLElement>("[data-annotation-status]")!;
+		const count = panel.querySelector<HTMLElement>("[data-annotation-count]")!;
+		const emptyState = panel.querySelector<HTMLElement>("[data-empty-state]")!;
+		const composer = panel.querySelector<HTMLFormElement>("[data-new-annotation]")!;
+		const threadView = panel.querySelector<HTMLElement>("[data-thread-view]")!;
+		const threadComments = panel.querySelector<HTMLElement>("[data-thread-comments]")!;
+		const replyForm = panel.querySelector<HTMLFormElement>("[data-reply-form]")!;
+		const selectionQuote = panel.querySelector<HTMLElement>("[data-selected-quote]")!;
+		const threadQuote = panel.querySelector<HTMLElement>("[data-thread-quote]")!;
+		const annotations = new Map<string, any>();
+		const anchorRanges = new Map<string, Range>();
+		let pendingSelection: { quote: string; prefix: string; suffix: string; start: number; end: number; range: Range } | null = null;
+		let activeThreadId: string | null = null;
+		let textIndex: ReturnType<typeof buildTextIndex>;
+	
+		const normalizeText = (value: string) => value.replace(/\s+/g, " ").trim();
+	
+		function appendIndexCharacter(
+			index: ReturnType<typeof buildTextIndex>,
+			char: string,
+			startNode: Text | null,
+			startOffset: number,
+			endNode: Text | null,
+			endOffset: number,
+		) {
+			index.text += char;
+			index.entries.push({ startNode, startOffset, endNode, endOffset });
+		}
+	
+		function buildTextIndex(root: HTMLElement) {
+			const index = {
+				text: "",
+				entries: [] as Array<{
+					startNode: Text | null;
+					startOffset: number;
+					endNode: Text | null;
+					endOffset: number;
+				}>,
+				offsets: new Map<Text, number[]>(),
+			};
+			const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+				acceptNode(node) {
+					const parent = node.parentElement;
+					return parent?.closest("script,style,button,textarea,pre,code")
+						? NodeFilter.FILTER_REJECT
+						: NodeFilter.FILTER_ACCEPT;
+				},
+			});
+			const blockSelector = "p,li,blockquote,h1,h2,h3,h4,h5,h6,td,th,figcaption";
+			let previousBlock: Element | null = null;
+			let node: Node | null;
+	
+			while ((node = walker.nextNode())) {
+				if (!(node instanceof Text) || !node.textContent) continue;
+				const currentBlock = node.parentElement?.closest(blockSelector) || null;
+				if (
+					currentBlock &&
+					previousBlock &&
+					currentBlock !== previousBlock &&
+					index.text &&
+					!index.text.endsWith(" ")
+				) {
+					appendIndexCharacter(index, " ", null, 0, null, 0);
+				}
+	
+				const value = node.textContent;
+				const offsets = new Array<number>(value.length + 1);
+				for (let offset = 0; offset < value.length; offset += 1) {
+					offsets[offset] = index.text.length;
+					const char = value[offset];
+					if (/\s/.test(char)) {
+						if (!index.text.endsWith(" ")) {
+							appendIndexCharacter(index, " ", node, offset, node, offset + 1);
+						} else {
+							const lastEntry = index.entries[index.entries.length - 1];
+							if (lastEntry?.endNode === node) lastEntry.endOffset = offset + 1;
+						}
+					} else {
+						appendIndexCharacter(index, char, node, offset, node, offset + 1);
+					}
+					offsets[offset + 1] = index.text.length;
+				}
+				index.offsets.set(node, offsets);
+				if (currentBlock) previousBlock = currentBlock;
+			}
+	
+			return index;
+		}
+	
+		function rangeForOffsets(index: ReturnType<typeof buildTextIndex>, start: number, end: number) {
+			const first = index.entries[start];
+			const last = index.entries[end - 1];
+			if (!first?.startNode || !last?.endNode || end <= start) return null;
+			const range = document.createRange();
+			range.setStart(first.startNode, first.startOffset);
+			range.setEnd(last.endNode, last.endOffset);
+			return range;
+		}
+	
+		function findAnchorRange(annotation: any) {
+			if (
+				Number.isInteger(annotation.start) &&
+				Number.isInteger(annotation.end) &&
+				textIndex.text.slice(annotation.start, annotation.end) === annotation.quote
+			) {
+				return rangeForOffsets(textIndex, annotation.start, annotation.end);
+			}
+	
+			let bestStart = -1;
+			let bestScore = -1;
+			let searchFrom = 0;
+			while (annotation.quote && searchFrom < textIndex.text.length) {
+				const candidate = textIndex.text.indexOf(annotation.quote, searchFrom);
+				if (candidate < 0) break;
+				const before = textIndex.text.slice(Math.max(0, candidate - 120), candidate);
+				const after = textIndex.text.slice(candidate + annotation.quote.length, candidate + annotation.quote.length + 120);
+				const prefixMatch = commonSuffixLength(before, annotation.prefix || "");
+				const suffixMatch = commonPrefixLength(after, annotation.suffix || "");
+				const score = prefixMatch + suffixMatch;
+				if (score > bestScore) {
+					bestStart = candidate;
+					bestScore = score;
+				}
+				searchFrom = candidate + 1;
+			}
+			return bestStart < 0
+				? null
+				: rangeForOffsets(textIndex, bestStart, bestStart + annotation.quote.length);
+		}
+	
+		function commonSuffixLength(a: string, b: string) {
+			let count = 0;
+			while (count < a.length && count < b.length && a[a.length - count - 1] === b[b.length - count - 1]) count += 1;
+			return count;
+		}
+	
+		function commonPrefixLength(a: string, b: string) {
+			let count = 0;
+			while (count < a.length && count < b.length && a[count] === b[count]) count += 1;
+			return count;
+		}
+	
+		function refreshHighlights() {
+			textIndex = buildTextIndex(article);
+			anchorRanges.clear();
+			const ranges: Range[] = [];
+			for (const annotation of annotations.values()) {
+				const range = findAnchorRange(annotation);
+				if (!range) continue;
+				anchorRanges.set(annotation.id, range);
+				ranges.push(range);
+			}
+			const highlights = (window as any).CSS?.highlights;
+			const HighlightClass = (window as any).Highlight;
+			if (highlights && HighlightClass && ranges.length > 0) {
+				highlights.set("paper-annotations", new HighlightClass(...ranges));
+			}
+		}
+	
+		function formatDate(value: string) {
+			const date = new Date(value);
+			return Number.isNaN(date.getTime())
+				? ""
+				: new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "short" }).format(date);
+		}
+	
+		function showList() {
+			activeThreadId = null;
+			composer.hidden = true;
+			threadView.hidden = true;
+			list.hidden = false;
+			emptyState.hidden = annotations.size > 0;
+		}
+	
+		function renderComments(annotation: any) {
+			threadComments.replaceChildren();
+			for (const comment of annotation.comments || []) {
+				const item = document.createElement("article");
+				item.className = "paper-annotation-comment";
+				const header = document.createElement("div");
+				header.className = "paper-annotation-comment-meta";
+				const author = document.createElement("strong");
+				author.textContent = comment.author;
+				const date = document.createElement("time");
+				date.textContent = formatDate(comment.createdAt);
+				date.dateTime = comment.createdAt;
+				header.append(author, date);
+				const text = document.createElement("p");
+				text.textContent = comment.text;
+				item.append(header, text);
+				threadComments.append(item);
+			}
+		}
+	
+		function openThread(id: string) {
+			const annotation = annotations.get(id);
+			if (!annotation) return;
+			activeThreadId = id;
+			composer.hidden = true;
+			list.hidden = true;
+			emptyState.hidden = true;
+			threadView.hidden = false;
+			threadQuote.textContent = annotation.quote;
+			renderComments(annotation);
+			(replyForm.elements.namedItem("author") as HTMLInputElement).value =
+				localStorage.getItem("paper-annotation-author") || "";
+		}
+	
+		function renderList() {
+			list.replaceChildren();
+			count.textContent = String(annotations.size);
+			emptyState.hidden = annotations.size > 0;
+			for (const annotation of annotations.values()) {
+				const item = document.createElement("li");
+				const button = document.createElement("button");
+				button.type = "button";
+				button.className = "paper-annotation-list-item";
+				button.dataset.threadId = annotation.id;
+				const quote = document.createElement("span");
+				quote.className = "paper-annotation-list-quote";
+				quote.textContent = annotation.quote;
+				const latestComment = annotation.comments?.[annotation.comments.length - 1];
+				const preview = document.createElement("span");
+				preview.className = "paper-annotation-list-preview";
+				preview.textContent = latestComment
+					? `${latestComment.author}: ${latestComment.text}`
+					: "打开批注";
+				button.append(quote, preview);
+				item.append(button);
+				list.append(item);
+			}
+		}
+	
+		async function request(path: string, options?: RequestInit) {
+			const response = await fetch(`${apiBase}${path}`, {
+				...options,
+				headers: {
+					"content-type": "application/json",
+					...options?.headers,
+				},
+			});
+			const result = await response.json().catch(() => ({}));
+			if (!response.ok) throw new Error(result.error || "批注请求失败");
+			return result;
+		}
+	
+		async function loadAnnotations() {
+			try {
+			const result = await request(`/api/annotations?document=${encodeURIComponent(documentSlug)}`);
+			if (!Array.isArray(result.annotations)) throw new Error("批注服务尚未启用");
+			annotations.clear();
+				for (const annotation of result.annotations || []) {
+					annotations.set(annotation.id, annotation);
+				}
+				renderList();
+				refreshHighlights();
+				status.textContent = "";
+			} catch (error) {
+				status.textContent = error instanceof Error ? error.message : "暂时无法加载批注";
+			}
+		}
+	
+		function getSelectionAnchor() {
+			const selection = window.getSelection();
+			if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
+			const range = selection.getRangeAt(0);
+			if (!article.contains(range.startContainer) || !article.contains(range.endContainer)) return null;
+			const quote = normalizeText(selection.toString());
+			if (!quote || quote.length > 2000) return null;
+	
+			textIndex = buildTextIndex(article);
+			const startMap = textIndex.offsets.get(range.startContainer as Text);
+			const endMap = textIndex.offsets.get(range.endContainer as Text);
+			let start = startMap?.[range.startOffset];
+			let end = endMap?.[range.endOffset];
+			if (start === undefined || end === undefined || textIndex.text.slice(start, end) !== quote) {
+				const candidates: number[] = [];
+				let from = 0;
+				while ((from = textIndex.text.indexOf(quote, from)) >= 0) {
+					candidates.push(from);
+					from += 1;
+				}
+				if (candidates.length === 0) return null;
+				start = candidates[0];
+				end = start + quote.length;
+			}
+			return {
+				quote,
+				start,
+				end,
+				prefix: textIndex.text.slice(Math.max(0, start - 120), start),
+				suffix: textIndex.text.slice(end, end + 120),
+				range: range.cloneRange(),
+			};
+		}
+	
+		function showAdder() {
+			const anchor = getSelectionAnchor();
+			if (!anchor) {
+				adder.hidden = true;
+				return;
+			}
+			pendingSelection = anchor;
+			const rect = anchor.range.getBoundingClientRect();
+			const left = Math.min(Math.max(8, rect.left), window.innerWidth - 164);
+			const top = Math.min(rect.bottom + 8, window.innerHeight - 54);
+			adder.style.left = `${left}px`;
+			adder.style.top = `${top}px`;
+			adder.hidden = false;
+		}
+	
+		function showComposer(anchor: NonNullable<typeof pendingSelection>) {
+			pendingSelection = anchor;
+			selectionQuote.textContent = anchor.quote;
+			threadView.hidden = true;
+			list.hidden = true;
+			emptyState.hidden = true;
+			composer.hidden = false;
+			adder.hidden = true;
+			const rememberedName = localStorage.getItem("paper-annotation-author") || "";
+			const authorInput = composer.elements.namedItem("author") as HTMLInputElement;
+			authorInput.value = rememberedName;
+			(composer.elements.namedItem("text") as HTMLTextAreaElement).focus();
+		}
+	
+		function findThreadAtPoint(x: number, y: number) {
+			for (const [id, range] of anchorRanges) {
+				for (const rect of range.getClientRects()) {
+					if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) return id;
+				}
+			}
+			return null;
+		}
+	
+		function appendLocalReply(annotation: any, comment: any) {
+			annotation.comments.push(comment);
+			annotations.set(annotation.id, annotation);
+			renderList();
+			renderComments(annotation);
+		}
+	
+		article.addEventListener("pointerup", () => window.setTimeout(showAdder, 0), { signal });
+		article.addEventListener("keyup", showAdder, { signal });
+		article.addEventListener("click", (event) => {
+			const id = findThreadAtPoint(event.clientX, event.clientY);
+			if (id) openThread(id);
+		}, { signal });
+		document.addEventListener("selectionchange", () => {
+			if (!window.getSelection()?.toString()) adder.hidden = true;
+		}, { signal });
+		window.addEventListener("scroll", () => {
+			if (pendingSelection && !adder.hidden) showAdder();
+		}, { passive: true, signal });
+	
+		panel.querySelectorAll<HTMLButtonElement>("[data-back-to-list]").forEach((button) => {
+			button.addEventListener("click", showList, { signal });
+		});
+		panel.querySelector<HTMLButtonElement>("[data-annotate-selection]")!.addEventListener("click", () => {
+			if (pendingSelection) showComposer(pendingSelection);
+		}, { signal });
+		list.addEventListener("click", (event) => {
+			const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-thread-id]");
+			if (button?.dataset.threadId) openThread(button.dataset.threadId);
+		}, { signal });
+		composer.addEventListener("submit", async (event) => {
+			event.preventDefault();
+			if (!pendingSelection) return;
+			const submit = composer.querySelector<HTMLButtonElement>("[type=submit]")!;
+			const author = (composer.elements.namedItem("author") as HTMLInputElement).value.trim();
+			const text = (composer.elements.namedItem("text") as HTMLTextAreaElement).value.trim();
+			if (!author || !text) return;
+			submit.disabled = true;
+			status.textContent = "正在发布批注";
+			try {
+				const { range: _range, ...anchor } = pendingSelection;
+				const result = await request("/api/annotations", {
+				method: "POST",
+				body: JSON.stringify({ document: documentSlug, ...anchor, author, text }),
+			});
+			if (!result.annotation?.id) throw new Error("批注服务尚未启用");
+			localStorage.setItem("paper-annotation-author", author);
+				annotations.set(result.annotation.id, result.annotation);
+				renderList();
+				refreshHighlights();
+				status.textContent = "";
+				composer.reset();
+				openThread(result.annotation.id);
+			} catch (error) {
+				status.textContent = error instanceof Error ? error.message : "发布失败";
+			} finally {
+				submit.disabled = false;
+			}
+		}, { signal });
+		replyForm.addEventListener("submit", async (event) => {
+			event.preventDefault();
+			if (!activeThreadId) return;
+			const submit = replyForm.querySelector<HTMLButtonElement>("[type=submit]")!;
+			const author = (replyForm.elements.namedItem("author") as HTMLInputElement).value.trim();
+			const text = (replyForm.elements.namedItem("text") as HTMLTextAreaElement).value.trim();
+			if (!author || !text) return;
+			submit.disabled = true;
+			status.textContent = "正在发布回复";
+			try {
+				const result = await request(
+					`/api/annotations/${encodeURIComponent(activeThreadId)}/comments?document=${encodeURIComponent(documentSlug)}`,
+					{ method: "POST", body: JSON.stringify({ author, text }) },
+				);
+				if (!result.comment?.id) throw new Error("批注服务尚未启用");
+				localStorage.setItem("paper-annotation-author", author);
+				const annotation = annotations.get(activeThreadId);
+				if (annotation) appendLocalReply(annotation, result.comment);
+				status.textContent = "";
+				replyForm.reset();
+				(replyForm.elements.namedItem("author") as HTMLInputElement).value = author;
+			} catch (error) {
+				status.textContent = error instanceof Error ? error.message : "回复失败";
+			} finally {
+				submit.disabled = false;
+			}
+		}, { signal });
+	
+		refreshHighlights();
+		loadAnnotations();
+	}
+
+	document.addEventListener("paper-annotations:init", initPaperAnnotations);
+	initPaperAnnotations();
+</script>
+
+<style>
+	.paper-annotations-host {
+		width: 100%;
+		min-width: 0;
+	}
+
+	.paper-annotations {
+		--annotation-width: clamp(20rem, 24vw, 24rem);
+		width: 100%;
+		min-width: 0;
+		padding: 1rem;
+		border: 1px solid var(--line-divider);
+		border-radius: 0.75rem;
+		background: var(--card-bg);
+		color: rgb(0 0 0 / 82%);
+		max-height: min(72vh, 42rem);
+		overflow-y: auto;
+		scrollbar-width: thin;
+	}
+
+	:global(.dark) .paper-annotations {
+		color: rgb(255 255 255 / 82%);
+	}
+
+	.paper-annotations-header {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 1rem;
+		padding-bottom: 0.75rem;
+		border-bottom: 1px solid var(--line-divider);
+	}
+
+	.paper-annotations-header > div:first-child {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+	}
+
+	.paper-annotations-header h2 {
+		margin: 0;
+		font-size: 1rem;
+		font-weight: 700;
+	}
+
+	.paper-annotations-state {
+		display: grid;
+		gap: 0.2rem;
+		color: rgb(0 0 0 / 50%);
+		font-size: 0.6875rem;
+		text-align: right;
+	}
+
+	:global(.dark) .paper-annotations-state {
+		color: rgb(255 255 255 / 55%);
+	}
+
+	.paper-annotations-header [data-annotation-count] {
+		color: rgb(0 0 0 / 50%);
+		font-size: 0.8125rem;
+	}
+
+	:global(.dark) .paper-annotations-header [data-annotation-count] {
+		color: rgb(255 255 255 / 55%);
+	}
+
+	.paper-annotations-header p {
+		margin: 0;
+		color: rgb(0 0 0 / 55%);
+		font-size: 0.75rem;
+		text-align: right;
+	}
+
+	.paper-annotations-state p {
+		font-size: 0.75rem;
+	}
+
+	:global(.dark) .paper-annotations-header p {
+		color: rgb(255 255 255 / 55%);
+	}
+
+	.paper-annotation-list {
+		display: grid;
+		gap: 0.5rem;
+		margin: 0;
+		padding: 0.75rem 0 0;
+		list-style: none;
+	}
+
+	.paper-annotation-list-item {
+		display: grid;
+		width: 100%;
+		gap: 0.25rem;
+		padding: 0.65rem 0.75rem;
+		border: 1px solid var(--line-divider);
+		border-radius: 0.5rem;
+		background: transparent;
+		color: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.paper-annotation-list-item:hover,
+	.paper-annotation-list-item:focus-visible {
+		border-color: var(--primary);
+		outline: none;
+	}
+
+	.paper-annotation-list-quote {
+		display: -webkit-box;
+		overflow: hidden;
+		font-size: 0.875rem;
+		font-weight: 650;
+		line-height: 1.45;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+	}
+
+	.paper-annotation-list-preview {
+		overflow: hidden;
+		color: rgb(0 0 0 / 55%);
+		font-size: 0.75rem;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	:global(.dark) .paper-annotation-list-preview {
+		color: rgb(255 255 255 / 55%);
+	}
+
+	.paper-annotations-empty {
+		margin: 0;
+		padding: 1rem 0.25rem;
+		color: rgb(0 0 0 / 55%);
+		font-size: 0.875rem;
+	}
+
+	:global(.dark) .paper-annotations-empty {
+		color: rgb(255 255 255 / 55%);
+	}
+
+	.paper-annotation-composer,
+	.paper-annotation-thread {
+		display: grid;
+		gap: 0.75rem;
+		padding-top: 0.75rem;
+	}
+
+	.paper-annotation-composer[hidden],
+	.paper-annotation-thread[hidden],
+	.paper-annotations-empty[hidden],
+	.paper-annotation-adder[hidden] {
+		display: none;
+	}
+
+	.paper-annotation-back {
+		justify-self: start;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		color: var(--primary);
+		font-size: 0.8125rem;
+		cursor: pointer;
+	}
+
+	.paper-annotation-composer blockquote,
+	.paper-annotation-thread > blockquote {
+		max-height: 7rem;
+		overflow: auto;
+		margin: 0;
+		padding: 0.65rem 0.75rem;
+		border-left: 2px solid var(--primary);
+		background: color-mix(in oklab, var(--primary) 7%, var(--card-bg));
+		font-size: 0.8125rem;
+		line-height: 1.5;
+	}
+
+	.paper-annotation-composer label,
+	.paper-annotation-reply label {
+		display: grid;
+		gap: 0.3rem;
+		font-size: 0.75rem;
+		font-weight: 600;
+	}
+
+	.paper-annotation-composer input,
+	.paper-annotation-composer textarea,
+	.paper-annotation-reply input,
+	.paper-annotation-reply textarea {
+		width: 100%;
+		min-width: 0;
+		padding: 0.55rem 0.65rem;
+		border: 1px solid var(--line-divider);
+		border-radius: 0.4rem;
+		background: var(--page-bg);
+		color: inherit;
+		font: inherit;
+		font-weight: 400;
+		resize: vertical;
+	}
+
+	.paper-annotation-submit {
+		justify-self: start;
+		padding: 0.5rem 0.85rem;
+		border: 0;
+		border-radius: 0.4rem;
+		background: var(--primary);
+		color: white;
+		font-size: 0.8125rem;
+		font-weight: 700;
+		cursor: pointer;
+	}
+
+	.paper-annotation-submit:disabled {
+		cursor: wait;
+		opacity: 0.6;
+	}
+
+	.paper-annotation-comments {
+		display: grid;
+		gap: 0.6rem;
+		max-height: 48vh;
+		overflow: auto;
+	}
+
+	.paper-annotation-comment {
+		padding-bottom: 0.6rem;
+		border-bottom: 1px solid var(--line-divider);
+	}
+
+	.paper-annotation-comment-meta {
+		display: flex;
+		justify-content: space-between;
+		gap: 0.5rem;
+		font-size: 0.75rem;
+	}
+
+	.paper-annotation-comment-meta time {
+		color: rgb(0 0 0 / 45%);
+		font-weight: 400;
+	}
+
+	:global(.dark) .paper-annotation-comment-meta time {
+		color: rgb(255 255 255 / 50%);
+	}
+
+	.paper-annotation-comment p {
+		margin: 0.35rem 0 0;
+		font-size: 0.875rem;
+		line-height: 1.55;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+	}
+
+	.paper-annotation-adder {
+		position: fixed;
+		z-index: 80;
+		padding: 0.25rem;
+		border: 1px solid var(--line-divider);
+		border-radius: 0.5rem;
+		background: var(--card-bg);
+		box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 18%);
+	}
+
+	.paper-annotation-adder button {
+		padding: 0.45rem 0.7rem;
+		border: 0;
+		border-radius: 0.3rem;
+		background: var(--primary);
+		color: white;
+		font-size: 0.8125rem;
+		font-weight: 700;
+		cursor: pointer;
+	}
+
+	@media (min-width: 1536px) {
+		.paper-annotations-host {
+			height: 0;
+		}
+
+		.paper-annotations {
+			position: fixed;
+			z-index: 45;
+			top: 6.25rem;
+			right: max(1.25rem, calc((100vw - var(--page-width)) / 2 + 1rem));
+			bottom: 1rem;
+			width: var(--annotation-width);
+			height: auto;
+			padding: 0.9rem;
+			border-top: 0;
+			border-right: 0;
+			border-bottom: 0;
+			border-left: 1px solid var(--line-divider);
+			border-radius: 0;
+			box-shadow: -1rem 0 2rem -1.5rem rgb(0 0 0 / 22%);
+			max-height: none;
+		}
+
+	}
+
+	@media (max-width: 1535px) {
+		.paper-annotations {
+			margin: 1rem 0;
+		}
+	}
+</style>

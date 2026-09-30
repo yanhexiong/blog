@@ -4,6 +4,13 @@ const postsCollection = defineCollection({
 	schema: z.object({
 		title: z.string(),
 		published: z.date(),
+		paperTitle: z.string().optional(),
+		paperPublicationDate: z
+			.union([
+				z.date(),
+				z.string().regex(/^\d{4}-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?$/),
+			])
+			.optional(),
 		updated: z.date().optional(),
 		draft: z.boolean().optional().default(false),
 		hideFromLists: z.boolean().optional().default(false),

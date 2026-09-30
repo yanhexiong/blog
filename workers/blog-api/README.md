@@ -8,6 +8,7 @@ This Worker serves the live answer board API and refreshes a cached snapshot eve
   - health check
 - `GET /api/board?series=linux-tutorial-series`
   - returns the current answer board JSON
+- Paper annotation endpoints are disabled unless `PAPER_ANNOTATIONS_ENABLED = "true"` is set in `wrangler.toml` and the Worker is redeployed.
 - `scheduled()`
   - refreshes KV cache every 15 minutes
 
@@ -39,3 +40,4 @@ pnpm dlx wrangler deploy --config workers/blog-api/wrangler.toml
 - The Worker returns cached data when available.
 - If the cache is older than 15 minutes, a request will still return cached data first and refresh in the background.
 - The cron trigger also refreshes the cache every 15 minutes, so most requests should hit KV instead of GitHub.
+- Paper annotation code and KV data are retained while the feature is disabled.

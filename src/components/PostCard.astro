@@ -15,6 +15,7 @@ type SeriesChild = {
 	url: string;
 	description?: string;
 	published: Date | string;
+	noSwup?: boolean;
 };
 
 interface Props {
@@ -110,6 +111,7 @@ const { remarkPluginFrontmatter } = await entry.render();
                     {seriesChildren.map((child) => (
                         <a
                             href={child.url}
+                            data-no-swup={child.noSwup ? "" : undefined}
                             class="group flex items-start justify-between gap-4 rounded-xl px-3 py-2 transition hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
                         >
                             <div class="min-w-0">
